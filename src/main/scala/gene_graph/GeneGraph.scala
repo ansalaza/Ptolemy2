@@ -112,7 +112,7 @@ object GeneGraph extends GFAwriter {
     /* END: PARSE GFF3-FORMATTED FILE INTO FINGER TREE DATA STRUCTURES */
 
     /**
-      * Create gene graph from whole genome and long-read alignment. First creat gene-graph from genome alignments
+      * Create gene graph from whole genome and long-read alignment. First create gene-graph from genome alignments
       * (note that an empty graph is returned if no whole genome alignments were provided). The resulting graph is
       * then updated with the long-read alignments (note not updates are made if no long-read alignments were provided).
       *
@@ -133,15 +133,22 @@ object GeneGraph extends GFAwriter {
         createGenomeGeneGraph(global_fingertree, config)
       //open and curate long-read alignments, if any
       val g = createAlignmentGeneGraph(global_fingertree, config, genome_gene_graph, sa_mappings)
-      //
+      //return final gene graph, genome paths,
       (g._1, genome_paths, gnode_coverage, gedge_coverage, g._2, g._3, g._4)
     }
+
+    //total nodes
+    val total_nodes = gene_graph.keys.size
+    //total edges
+    val total_edges = gene_graph.values.toList.map(_.size).sum
+    println(timeStamp + "Constructed final gene graph of " + total_nodes + " nodes and " + total_edges + " edges")
 
     println(timeStamp + "Writing to disk")
     //create output file
     val pw = new PrintWriter(config.outputDir + "/gene_graph.gfa")
     //output graph to gfa
-    graph2GFA(pw, gene_graph, genome_paths)
+    ptolemyGraph2GFA(pw, gene_graph, genome_paths, genome_node_coverage, genome_edge_coverage,
+      alignment_node_coverage, alignment_edge_coverage, tmp_projection)
     pw.close()
     //create id file
     val pw2 = new PrintWriter(config.outputDir + "/gene_graph.node_ids.txt")
@@ -168,7 +175,7 @@ object GeneGraph extends GFAwriter {
     //user did not provide whole genome alignments
     if (config.genomeAlignments == null) {
       println(timeStamp + "Skipping gene graph construction from whole genome alignments")
-      (empty_gene_graph, empty_paths, Map.empty[Int, Int])
+      (empty_gene_graph, empty_paths, Map.empty[Int, Int], Map.empty[Int, Int], Map.empty[(Int,Int), Int])
     }
     //user provided whole genome alignments, construct gene graphs
     else {

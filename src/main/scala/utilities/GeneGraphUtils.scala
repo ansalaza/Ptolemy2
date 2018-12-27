@@ -25,14 +25,19 @@ object GeneGraphUtils extends GFAwriter with GFAreader {
   val empty_gene_graph = Map.empty[Int, List[Int]]
 
   /**
+    * Path node entry
+    */
+  case class PathEntry(nodeID: Int, ori: Char)
+
+  /**
     * Type alias for paths
     */
-  type Paths = Map[String, List[Int]]
+  type Paths = Map[String, List[PathEntry]]
 
   /**
     * Empty paths
     */
-  val empty_paths = Map.empty[String, List[Int]]
+  val empty_paths = Map.empty[String, List[PathEntry]]
 
   /**
     * Type alias for node coverage
@@ -123,13 +128,13 @@ object GeneGraphUtils extends GFAwriter with GFAreader {
     * @return GeneGraph
     */
   def fingertree2GeneGraph(fingertree: FingerTree,
-                           initial_graph: GeneGraph = empty_gene_graph): (GeneGraph, List[Int]) = {
+                           initial_graph: GeneGraph = empty_gene_graph): (GeneGraph, List[PathEntry]) = {
     //get path by gene ids and sort by id
-    val path = fingertree.toList.map(_._2).sorted
+    val path = fingertree.toList.map(_._2).sorted.map(x => new PathEntry(x, '+'))
     //iterate through each edge and create gene graph
     val updated_graph = path.sliding(2).foldLeft(initial_graph)((acc_graph, genes) => {
       //get nodes
-      val (node1, node2) = (genes.head, genes(1))
+      val (node1, node2) = (genes.head.nodeID, genes(1).nodeID)
       //get edges
       val node1_edges = node2 :: acc_graph.getOrElse(node1, List[Int]())
       val node2_edges = node1 :: acc_graph.getOrElse(node2, List[Int]())

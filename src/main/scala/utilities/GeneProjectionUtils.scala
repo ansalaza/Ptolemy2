@@ -2,6 +2,7 @@ package utilities
 
 import de.sciss.fingertree.RangedSeq
 import utilities.AlignmentUtils.Alignment
+import utilities.GeneGraphUtils.PathEntry
 import utilities.IntervalUtils.rangeCoverage
 
 /**
@@ -15,7 +16,7 @@ object GeneProjectionUtils {
   /**
     * Type alias for finger tree data structure
     */
-  type FingerTree =  RangedSeq[((Int, Int), Int), Int]
+  type FingerTree = RangedSeq[((Int, Int), Int), Int]
 
   /** Empty figer tree data structure */
   val empty_fingertree = RangedSeq.empty[((Int, Int), Int), Int](_._1, Ordering.Int)
@@ -26,31 +27,29 @@ object GeneProjectionUtils {
     *
     * @param cov_filter  Function to extract overlapping genes given coordinates from the alignment and list of
     *                    overlapping genes from fingertree
-    * @param alignments  List of alignments in a target genome
+    * @param alignment   List of alignments in a target genome
     * @param local_genes Fingertree of target genome
     * @return Gene projections onto a sequence as list of gene IDs
     */
   def projectGenes(cov_filter: ((Int, Int), List[((Int, Int), Int)]) => List[((Int, Int), Int)])
-                  (alignments: List[Alignment],
+                  (alignment: Alignment,
                    local_genes: FingerTree,
-                  ): List[Int] = {
-    //sort alignments by position on the read
-    alignments.sortBy(_.qcoords._1).foldLeft(List[Int]())((projection, alignment) => {
-      //get alignment coordinates on reference genome
-      val ref_coords = (alignment.rcoords._1, alignment.rcoords._2 + 1)
-      //get local projected genes, in order
-      val projected = cov_filter(ref_coords, local_genes.filterOverlaps(ref_coords).toList).map(_._2)
-      //adjust orientation
-      (if (alignment.isForward()) projected else projected.reverse)
-        //add to overall projection of th read
-        .foldLeft(projection)((b, a) => a :: b)
-    }).reverse
+                  ): List[PathEntry] = {
+    //set orientation character
+    val ori = if (alignment.isForward()) '+' else '-'
+    //get alignment coordinates on reference genome
+    val ref_coords = (alignment.rcoords._1, alignment.rcoords._2 + 1)
+    //get local projected genes, in order
+    val projected = cov_filter(ref_coords, local_genes.filterOverlaps(ref_coords).toList).map(_._2)
+    //adjust orientation
+    (if (alignment.isForward()) projected else projected.reverse).map(x => new PathEntry(x, ori))
   }
 
   /**
     * Curried funtion to filter out overlapping genes retrieved from the finger tree. By definition, this means
     * comparing the first and last genes and checking the alignment coverage on whether they meet the minimum
     * alignment coverage threshold
+    *
     * @param minAlignmentCov Minimum alignment coverage threshold
     * @return
     */
@@ -59,7 +58,7 @@ object GeneProjectionUtils {
     //no genes to process, move one
     if (genes.isEmpty) genes
     //only one gene to process
-    else if (genes.size == 1) if(rangeCoverage(genes.head._1, read_range) >= minAlignmentCov) genes else genes.tail
+    else if (genes.size == 1) if (rangeCoverage(genes.head._1, read_range) >= minAlignmentCov) genes else genes.tail
     //multiple genes to process
     else {
       //compute alignment coverage from the left-end

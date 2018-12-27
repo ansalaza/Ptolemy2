@@ -53,7 +53,8 @@ object GenomeGeneGraph {
     //set method to filter alignments by given minimum alignment coverage
     val alignment_filter = filterByCoverage(minCov)
     //set curried method to filter out reads not covered by minimum alignment coverage
-    val gene_projector = projectGenes(alignment_filter) _
+    //val gene_projector = projectGenes(alignment_filter) _
+
 
     /**
       * Tail-recursive method to find syntenic anchors based on whole genome alignment. Pseudocode as follows:
@@ -90,11 +91,11 @@ object GenomeGeneGraph {
           val sa = current_alignment._2.foldLeft(syntenic_anchors)((acc_sa, alignment) => {
             //get overlapping genes in current query's aligned sequence
             val query_local_genes = alignment_filter(alignment.qcoords, query_finger_tree.filterOverlaps(alignment.qcoords).toList)
-            println("LOCAL GENES: " + query_local_genes)
+            //println("LOCAL GENES: " + query_local_genes)
             //println(query_local_genes)
             //determine syntenic anchors by identifying overlapping genes between query and ref
             query_local_genes.foldLeft(acc_sa)((local_acc_sa, query_gene) => {
-              println("PROCESSING: " + query_gene)
+              //println("PROCESSING: " + query_gene)
               //project the coordinates of the current query gene onto the coordinates of the aligned ref sequence
               val projected_coords = (
                 normalizePosition(alignment.rcoords._1, alignment.rcoords._2, alignment.qcoords._1,
@@ -133,7 +134,7 @@ object GenomeGeneGraph {
     println(timeStamp + "Creating syntenic anchor graph")
     //create non-directed syntenic anchor graph
     val sa_graph = syntenic_anchors.groupBy(_._1).mapValues(_.map(_._2)) ++ syntenic_anchors.groupBy(_._2).mapValues(_.map(_._1))
-    println(timeStamp + "Identifying connected components")
+    println(timeStamp + "--Identifying connected components")
     //fetch ortholog clusters, which are connected components
     val sa_ccs = getConnectedComponents(sa_graph)
     //get total number of ccs
@@ -158,13 +159,13 @@ object GenomeGeneGraph {
           //get current genome path using new gene ids
           val local_genome_paths = {
             //sort by gene id, get new gene ids, DO NOT collapse overlapping cases (for now)
-            genes.toList.sortBy(_._2).map(x => new_ids.getOrElse(x._2, x._2))
+            genes.toList.sortBy(_._2).map(x => new PathEntry(new_ids.getOrElse(x._2, x._2), '+'))
           }
           //get all genes for current genome, get all edges and update gene graph
           val local_gene_graph = {
             local_genome_paths.sliding(2).foldLeft(gene_graph)((acc_gene_graph, _edge) => {
               //get new node IDs for the current two nodes
-              val (node1, node2) = (_edge.head, _edge(1))
+              val (node1, node2) = (_edge.head.nodeID, _edge(1).nodeID)
               //update node1's current edges
               val node1_current_edges = node2 :: acc_gene_graph.getOrElse(node1, List[Int]())
               //update node2's current edges
@@ -195,13 +196,13 @@ object GenomeGeneGraph {
         case ((node_cov, edge_cov), (genome, path)) => {
           //update node coverage
           val updated_node_coverage =
-            path.foldLeft(node_cov)((cov, gene) => cov + (gene -> (cov.getOrElse(gene, 0) + 1)))
+            path.foldLeft(node_cov)((cov, gene) => cov + (gene.nodeID -> (cov.getOrElse(gene.nodeID, 0) + 1)))
           //update edge coverage, both forward and reverse
           val updated_edge_coverage = {
             //iterate through each edge
             path.sliding(2).foldLeft(edge_cov)((cov, _edge) => {
               //set forward edge
-              val forward = (_edge.head, _edge(1))
+              val forward = (_edge.head.nodeID, _edge(1).nodeID)
               //self edge
               if (forward._1 == forward._2) {
                 //updated forward coverage +2
@@ -223,7 +224,7 @@ object GenomeGeneGraph {
         }
       }}
 
-    println(timeStamp + "Constructued gene graph of " + total_nodes + " nodes and " +
+    println(timeStamp + "Constructed gene graph from whole-genome alignments of " + total_nodes + " nodes and " +
       global_gene_graph.toList.map(_._2.size).sum + " edges")
     //return global gene graph
     (global_gene_graph, global_genome_paths, new_ids, node_coverage, edge_coverage)
