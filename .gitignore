@@ -7,3 +7,6 @@
 # Sbt ignore
 target/
 META-INF/
+
+# Ptolemy2 stuff
+src/main/scala/**/play.scala

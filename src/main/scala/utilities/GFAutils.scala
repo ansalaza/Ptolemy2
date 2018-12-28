@@ -179,9 +179,13 @@ object GFAutils {
       (path, size)
     }
 
-    def loadGFA: File => (GeneGraph, List[(String, List[Int])]) = file => {
+    /**
+      * Function to load GFA file given a file object
+      * @return 2-tuple (GeneGraph and List of paths)
+      */
+    def loadGFA: File => (GeneGraph, Map[String, List[PathEntry]]) = file => {
       val (all_nodes, all_edges, all_paths) = {
-        openFileWithIterator(file).foldLeft((List[Int](), List[(Int, Int)](), List[(String, List[Int])]())) {
+        openFileWithIterator(file).foldLeft((List[Int](), List[(Int, Int)](), List[(String, List[PathEntry])]())) {
           case ((nodes, edges, paths), line) => {
             val columns = line.split("\t")
             columns.head match {
@@ -190,7 +194,7 @@ object GFAutils {
                 val (node1, node2) = (columns(1).toInt, columns(3).toInt)
                 (nodes, (node1, node2) :: edges, paths)
               }
-              case "P" => (nodes, edges, (columns(1), columns(2).split(",").toList.map(_.toInt)) :: paths)
+              case "P" => (nodes, edges, (columns(1), parsePathLine(columns(2))._1) :: paths)
               case _ => (nodes, edges, paths)
             }
           }
@@ -209,7 +213,7 @@ object GFAutils {
           assert(graph(edge).toSet.contains(node), "Expected bi-directional edge for " + (node,edge))
         })
       }}
-      (graph, all_paths)
+      (graph, all_paths.toMap)
     }
 
 

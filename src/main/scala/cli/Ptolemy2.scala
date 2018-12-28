@@ -11,7 +11,9 @@ object Ptolemy2 {
   def main(args: Array[String]): Unit = {
     val help = (
       "Usage: java -jar ptolemy2.jar [tool]\n\n" +
-        "gene-graph          Construct a gene graph from a given set of genomes.\n\n" +
+        "PTOLEMY TOOLS\n" +
+        "gene-graph          Construct a gene graph from a given set of genomes.\n" +
+        "path-metrics        Summarize metrics for all paths in a GFA file.\n\n"+
         "MINIMAP2 AUTOMATION TOOLS\n" +
         "index-genomes         Index a given list of genomes with minimap2\n" +
         "pairwise-alignment    Automate pariwsie genome alignment with minimap2\n\n" +
@@ -24,6 +26,7 @@ object Ptolemy2 {
     } else {
       args(0) match {
         case "gene-graph" => gene_graph.GeneGraph.main(args.drop(1))
+        case "path-metrics" => gene_graph.ArchitectureMetrics.main(args.drop(1))
 
         case "index-genomes" => genome_alignment.IndexGenomes.main(args.drop(1))
         case "pairwise-alignment" => genome_alignment.PairwiseAlignment.main(args.drop(1))

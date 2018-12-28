@@ -27,7 +27,19 @@ object GeneGraphUtils extends GFAwriter with GFAreader {
   /**
     * Path node entry
     */
-  case class PathEntry(nodeID: Int, ori: Char)
+  case class PathEntry(nodeID: Int, ori: Char) {
+    /**
+      * Method to check whether give path entry is in forward orientation
+      * @return Boolean
+      */
+    def isForward(): Boolean = ori == '+'
+
+    /**
+      * Revers orientation of path entry
+      * @return PathEntry
+      */
+    def reverse(): PathEntry = new PathEntry(nodeID, (if(isForward) '-' else '+'))
+  }
 
   /**
     * Type alias for paths
