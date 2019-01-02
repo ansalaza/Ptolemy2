@@ -1,4 +1,4 @@
-package gene_graph
+package metrics
 
 import java.io.{File, PrintWriter}
 

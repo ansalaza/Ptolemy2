@@ -1,9 +1,10 @@
 package utilities
 
-import java.io.File
+import java.io.{File, PrintWriter}
 
 import utilities.FileHandling.{getFileExtension, openFileWithIterator}
-import atk.ProgressBar.progress
+
+import scala.annotation.tailrec
 
 /**
   * Author: Alex N. Salazar
@@ -16,30 +17,11 @@ import atk.ProgressBar.progress
 object SequenceFormatUtils {
 
   /**
-    * Abstract class for Fasta and Fastq sequence entries
-    */
-  abstract class Entry {
-    val name: String
-    val seq: String
-  }
-
-  /**
-    * Abstract class for Fasta and Fastq sequence iterators
-    */
-  abstract class SeqIterator {
-    val iterator: Iterator[String]
-
-    def hasNext(): Boolean = iterator.hasNext
-
-    def next(): Entry
-  }
-
-  /**
     * Function to get file type for a given file
     *
     * @return String
     */
-  def getFileType: File => String = file => {
+  private def getFileType: File => String = file => {
     //all fasta extensions
     val fasta_types = Set("fa", "fasta", "fna")
     //all fastq extensions
@@ -60,210 +42,161 @@ object SequenceFormatUtils {
   }
 
   /**
-    * Function to load generic sequence iterator
-    * @return SeqIterator
+    * Internal strings for classifying fasta or fastq iles
     */
-  def loadSeqIterator: File => SeqIterator = file => {
-    //get file type
-    val file_type = getFileType(file)
-    //load seq iterator
-    file_type match {
-      case "fasta" => new FastaIterator(file)
-      case "fastq" => new FastqIterator(file)
-    }
-  }
+  private val fasta_type = "fasta"
+  private val fastq_type = "fastq"
+
+  /**
+    * Function to parse name of a sequence (fasta/fastq) entry. Only consider first string after splitting for any
+    * whitespace
+    * @return String
+    */
+  private def parseSeqName: String => String = name => name.split("\\s+").head.substring(1)
+
 
   /**
     * Function to construct map of sequence ID -> sequence length
     * @return Map[String, Int]
     */
-  def computeSeqLengthMap: File => Map[String, Int] = reads_file => {
-    //load iterator
-    val iterator = loadSeqIterator(reads_file)
-
-    /**
-      * Method to iterate through seq iterator and add read name and length to list
-      * @param acc Accumulating list of read name and length
-      * @return List[(String,Int)]
-      */
-    def appendLengths(acc: List[(String, Int)]): List[(String, Int)] = {
-      if (!iterator.hasNext()) acc
-      else {
-        //get next fasta entry
-        val next_entry = iterator.next()
-        //add to list
-        appendLengths((next_entry.name, next_entry.seq.length) :: acc)
-      }
-    }
-    //get read length list and covert to map data structure
-    appendLengths(List()).toMap
-  }
-
-  /**
-    * Method to iterate through a file of sequences (e.g reads) and assign unique IDs
-    * @return
-    */
-  def assignSeqIDs: File => Map[String,Int] = reads_file => {
-    //load iterator
-    val iterator = loadSeqIterator(reads_file)
-
-    /**
-      * Method to iterate through seq iterator and assign unique INT ID to read name
-      * @param acc Accumulating list of 2-tuples as (read name, unique ID)
-      * @param id Accumulating ID
-      * @return List[(String, Int)]
-      */
-    def assignIDs(acc: List[(String, Int)], id: Int): List[(String, Int)] = {
-      if (!iterator.hasNext()) acc
-      else {
-        //get next fasta entry
-        val next_entry = iterator.next()
-        //add to list
-        assignIDs((next_entry.name, id) :: acc, id+1)
-      }
-    }
-    //iterate and assignd unique INT ids
-    assignIDs(List(), 0).toMap
-  }
-
-  /**
-    * Case class for a Fasta entry sequence
-    */
-  case class FastaEntry(name: String, seq: String) extends Entry
-
-  /**
-    *
-    * @param file
-    */
-  class FastaIterator(file: File, logger: Int = 10000) extends SeqIterator {
+  def computeSeqLengthMap: File => Map[String,Int] = seq_file => {
     //load file as iterator
-    val iterator = openFileWithIterator(file)
-    //create an empty variable storing the current fasta entry name
-    private var entry_acc = Option.empty[String]
+    val iterator = openFileWithIterator(seq_file)
 
     /**
-      * Check that the iterator is not empty
-      *
-      * @return Boolean
+      * Method to obtain a map of sequence ID -> sequence length
+      * @return Map[String,Int]
       */
-    //def hasNext(): Boolean = iterator.hasNext
-
-    /**
-      * Get the next Fasta entry sequence
-      *
-      * @return
-      */
-    def next(): FastaEntry = {
-      progress(logger)
+    def fasta2LengthMap(): Map[String, Int] = {
       /**
-        * Method to fetch the next Fasta entry sequence
-        *
-        * @param seq_acc Accumulating sequence
-        * @return FastaEntry
+        * Tail-recursive method to iterate through sequence iterator and construct 2-tuple list of read ID and length
+        * @param name Current fasta entry as option
+        * @param length Size of current fasta entry
+        * @param acc Accumulating list
+        * @return 2-tuple list of read ID and length
         */
-      def buildFastaEntry(seq_acc: StringBuilder): FastaEntry = {
-        /**
-          * Method to create a FastaEntry object using current data accumulated
-          *
-          * @return FastaEntry
-          */
-        def createFastaEntry(): FastaEntry = {
-          assert(seq_acc.nonEmpty, "Start of new Fasta entry but current entry sequence is empty " + entry_acc.get)
-          //create fasta entry
-          val fasta_entry = new FastaEntry(entry_acc.get.split("\\s++").head.substring(1), seq_acc.toString)
-          //return
-          fasta_entry
-        }
-
-        //if empty assume this is the first iteration
-        if (entry_acc.isEmpty) {
-          //get entry name
-          val entry_name = iterator.next()
-          assert(entry_name.startsWith(">"), "Expected start of new entry but found the following line: " + entry_name)
-          //set current fasta entry to current entry name
-          entry_acc = Option(entry_name)
-          //move on to next line
-          buildFastaEntry(seq_acc)
-        }
-        //assume building sequence
+      @tailrec def _fasta2LengthMap(name: Option[String], length: Int, acc: List[(String,Int)]): List[(String,Int)] = {
+        //iterator is empty, add last entry to list
+        if(iterator.isEmpty) (name.get, length) :: acc
         else {
-          //reached end of file, create fasta entry
-          if (!hasNext()) createFastaEntry()
-          else {
-            //get next entry sequence
-            val entry_seq = iterator.next()
-            //current line is a sequence line, append to current accumulating sequence
-            if (!entry_seq.startsWith(">")) buildFastaEntry(seq_acc.append(entry_seq))
-            //start of new fasta entry
-            else {
-              val fasta_entry = createFastaEntry()
-              //store next fasta entry name
-              entry_acc = Option(entry_seq)
-              //return
-              fasta_entry
-            }
+          //get next line
+          val current_line = iterator.next()
+          //started new fasta entry
+          if(current_line.startsWith(">")) {
+            _fasta2LengthMap(Option(parseSeqName(current_line)), 0,
+              (if(name.isEmpty) acc else (name.get, length) :: acc))
           }
+            //still in the same fasta entry, update length
+          else _fasta2LengthMap(name, length + current_line.size, acc)
         }
       }
-      //attempt to create the next fasta entry
-      buildFastaEntry(new StringBuilder())
+      //run method and convert output to map
+      _fasta2LengthMap(None, 0, List()).toMap
+    }
+
+    /**
+      * Method to obtain map of read ID -> length
+      * @return Map[String, Int]
+      */
+    def fastq2LengthMap(): Map[String, Int] = {
+      //assumes each fastq entry is in groups of 4
+      iterator.grouped(4).foldLeft(List[(String,Int)]())((acc, entry) => {
+        //get read id
+        val name = parseSeqName(entry.head)
+        //append to list
+        (name, entry(1).size) :: acc
+      }).toMap
+    }
+
+    //get file type
+    val seq_type = getFileType(seq_file)
+    //obtain length map according to file type
+    seq_type match {
+      case `fasta_type` => fasta2LengthMap()
+      case `fastq_type` => fastq2LengthMap()
+      case _ => {
+        assert(false, "Unrecognized file type: " + seq_file.getName)
+        Map.empty[String, Int]
+      }
     }
   }
 
-  /**
-    *
-    * @param name
-    * @param seq
-    */
-  case class FastqEntry(name: String, seq: String, qual: String) extends Entry
 
   /**
-    *
-    * @param file
+    * Method that output (sub)sequences of a given sequence file in FASTA/FASTQ format given an output file and a
+    * configuration map file
+    * @param config_map Configuration map containing seq ID -> list of 2-tuples as (start,end)
+    * @param pw Output file as printwriter
+    * @param seqs Sequence file as File object
     */
-  class FastqIterator(file: File, logger: Int = 10000) extends SeqIterator {
-    //load file as iterator
-    val iterator = openFileWithIterator(file)
-
+  def fetchSubSeqs(config_map: Map[String, List[(Int, Int)]], pw: PrintWriter, seqs: File): Unit = {
     /**
-      * Check that the iterator is not empty
-      *
-      * @return Boolean
+      * Function to output the subsequences of a sequence given the sequence name, sequence, and list of coordinates
+      * @return Unit
       */
-    //def hasNext(): Boolean = iterator.hasNext
-
-    /**
-      * Get the next Fasta entry sequence
-      *
-      * @return
-      */
-    def next(): FastqEntry = {
-      progress(logger)
-      /**
-        * Method to iterate through each line and gather all lines for the next fastq entry
-        *
-        * @param acc Accumulating list in reverse order
-        * @return FastqEntry
-        */
-      def buildFastqEntry(acc: List[String]): FastqEntry = {
-        //assume each fastq entry has 4 lines, get next line and add to acc
-        if (acc.size != 4) buildFastqEntry(iterator.next() :: acc)
+    def outputSubSeqs(name: String, seq: String): Unit = {
+      //attempt to get coords, if any
+      val coords = config_map.get(name)
+      //this sequence exists in configuration map
+      if(coords.nonEmpty) {
+        //this sequence has no coordinate, output entire sequence
+        if (coords.get.isEmpty) pw.println(">" + name + "\n" + seq)
         else {
-          //get name, sequence, and corresponding quality scores
-          val (name, seq, qual) = {
-            //reverse list
-            val tmp = acc.reverse
-            //return assumed elements
-            (tmp.head, tmp(1), tmp(3))
-          }
-          assert(name.startsWith("@"), "Unexpected start of fastq entry " + name)
-          assert(seq.length == qual.length, "Unexpected quality and sequence length for fastq entry " + name)
-          //return fastq entry
-          new FastqEntry(name.split("\\s++").head.substring(1), seq, qual)
+          //iterate through each coordinate and output subsequence
+          coords.get.foreach(coord =>
+            pw.println(">" + name + "_" + coord._1 + "_" + coord._2 + "\n" + seq.substring(coord._1, coord._2))
+          )
         }
       }
+    }
 
-      buildFastqEntry(List())
+    //load file as iterator
+    val iterator = openFileWithIterator(seqs)
+
+    /**
+      * Method to iterate through FASTA file and output specified (sub)sequences in the configuration map
+      */
+    def fetchSubSeqFasta(): Unit = {
+      /**
+        * Tail-recursive method to iterate through sequence file and output specified (sub)sequences in the
+        * configuration map
+        * @param name Name of fasta entry as option
+        * @param acc_seq Accumulating sequence as string builder
+        */
+      @tailrec def _fetchSubSeqFasta(name: Option[String], acc_seq: StringBuilder): Unit = {
+        //iterator is empty, attempt to fetch last entry
+        if(iterator.isEmpty) outputSubSeqs(name.get, acc_seq.toString)
+        else {
+          //get next line
+          val current_line = iterator.next()
+          //started new fasta entry
+          if(current_line.startsWith(">")) {
+            //there is an existing fasta entry, output that to disk if it was specified
+            if(name.nonEmpty) outputSubSeqs(name.get, acc_seq.toString)
+            //start building new fasta entry
+            _fetchSubSeqFasta(Option(parseSeqName(current_line)), new StringBuilder())
+          }
+          //still in the same fasta entry, update sequence
+          else _fetchSubSeqFasta(name, acc_seq.append(current_line))
+        }
+      }
+      //run method and convert output to map
+      _fetchSubSeqFasta(None, new StringBuilder)
+    }
+
+    /**
+      * Method to iterate through FASTQ file and output specified (sub)sequences in the configuration map.
+      * Note, assume FASTQ entries are grouped in 4
+      */
+    def fetchSubSeqFastq(): Unit = iterator.grouped(4).foreach(e => outputSubSeqs(parseSeqName(e.head), e(1)))
+
+    //get file type
+    val seq_type = getFileType(seqs)
+    //obtain length map according to file type
+    seq_type match {
+      case `fasta_type` => fetchSubSeqFasta()
+      case `fastq_type` => fetchSubSeqFastq()
+      case _ => assert(false, "Unrecognized file type: " + seqs.getName)
     }
   }
 

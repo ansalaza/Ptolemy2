@@ -92,8 +92,10 @@ object Minimap2Utils {
             val logger = ProcessLogger((o: String) => out.append(o + "\n"), (e: String) => err.append(e))
             //set command
             val command = constructAlignmentCommand(subj_assembly, target_index)
+            println("Running command")
             //run alignment command
             Process(command).!(logger)
+            println("Parsing output")
             //process alignments
             out.toString.split("\n").foreach(line => if (line.nonEmpty) pw.println(line))
           }}

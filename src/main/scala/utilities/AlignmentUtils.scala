@@ -36,37 +36,6 @@ object AlignmentUtils {
     def getTrueRefPositions(): (Int, Int) = if (isForward()) rcoords else rcoords.swap
   }
 
-  def mergeContainedAlignments(alignments: List[Alignment], overlapRation: Double): List[Alignment] = {
-    /**
-      * Function to merged contained alignments by retaining the largest alignment based on the read coordinates
-      * @return Alignment
-      */
-    def mergeAlignments: List[Alignment] => Alignment = contained_alignments =>
-      contained_alignments.maxBy(x => intervalSize(x.qcoords))
-
-    /**
-      *
-      * @param remaining_alignments
-      * @param acc
-      * @param merged
-      * @return
-      */
-    def _mergedContainedAlignments(remaining_alignments: List[Alignment],
-                                   acc: List[Alignment],
-                                   merged: List[Alignment]): List[Alignment] = {
-      remaining_alignments match {
-        case Nil => if(acc.isEmpty) merged.sortBy(_.qcoords) else (mergeAlignments(acc) :: merged).sortBy(_.qcoords)
-        case head :: tail => {
-          if(acc.isEmpty) _mergedContainedAlignments(tail, head :: acc, merged)
-          else {
-            ???
-          }
-        }
-      }
-    }
-    ???
-  }
-
   /**
     * Method to obtain breakpoint coordinates in the respective reference sequence in a given list of alignments. Here,
     * breakpoints are the locations of discontiguous alignments (i.e. end/start of two alignments next to each other
@@ -226,7 +195,7 @@ object AlignmentUtils {
   /**
     * Function to fetch multimapping alignments given a list of alignments for a read
     *
-    * @return List[List[Alignment]]
+    * @return List[List[Alignment]
     **/
   def getMultiMapping(alignments: List[Alignment], min_overlap: Double): List[List[Alignment]] = {
     /**

@@ -36,32 +36,6 @@ object PAFutils {
                       rcoords: (Int,Int),
                       mapq: Int)
 
-  /**
-    * Method to classify alignment type (used for assembly).
-    * @param o Overhang length
-    * @param r Max overhang to mapping length ratio
-    * @param a Alignment as a PAFentry object
-    * @return String
-    */
-  def getAlignmentType(o: Int, r: Double)(a: PAFentry): String = {
-    //compute the overhang of the given alignment
-    val overhang = min(a.qcoords._1, a.rcoords._1) + min(a.query_length - a.qcoords._2, a.ref_length - a.rcoords._2)
-    //compute the length of the alignment
-    val maplen = max(intervalSize(a.qcoords), intervalSize(a.rcoords))
-    //internal match
-    if(overhang > min(o, (maplen * r).toInt)) "internal"
-    //first reasd is contained in the second one
-    else if(a.qcoords._1 <= a.rcoords._1 && (a.query_length - a.qcoords._2 <= a.ref_length - a.rcoords._2) && a.qcoords._1 < o)
-      "first_contained"
-    //second read is contained in the first one
-    else if(a.qcoords._1 >= a.rcoords._1 && (a.query_length - a.qcoords._2 >= a.ref_length - a.rcoords._2))
-      "second_contained"
-    //end of the first read overlaps with the beginning of the second
-    else if(a.qcoords._1 > a.rcoords._1) "first_overlap"
-    //start of the first read overlaps with the end of the second
-    else "second_overlap"
-  }
-
 
   /**
     * Function to convert a string to a PAFentry object
@@ -88,80 +62,6 @@ object PAFutils {
     //load next paf entry
     def next(): PAFentry = toPAFentry(iterator.next())
   }
-/**
-  /**
-    * Function to find and merge overlapping alignments into a single alignment representing largest contiguous
-    * stretch. Internally sorts given alignments before processing
-    * @return List[PAFentry]
-    */
-  private def mergeAlignments: List[PAFentry] => List[PAFentry] = alignments => {
-    /**
-      * Function to merge a given list of overlaping alignments into a single alignment
-      * @return PAFentry
-      */
-    def mergeOverlaps: List[PAFentry] => PAFentry = x => {
-      if (x.size == 1) x.head
-      else {
-        //get read name
-        val read_name = x.head.qname
-        //get read length
-        val read_length = x.head.query_length
-        //get mapq
-        val mapq = x.head.mapq
-        //get max contiguous query coordinates
-        val max_query_interval = mergeIntervals(x.map(_.qcoords))
-        //get all ref sequences
-        val all_refs = x.map(_.rname).distinct
-        //get ref intervals
-        assume(all_refs.size == 1, "Multiple reference sequences for overlapping query alignments in read " +
-          read_name + ": " + all_refs)
-        assume(x.map(_.ori).distinct.size == 1, "Multiple orientations for overlapping query alignments in read " +
-          read_name)
-        //get max contiguous ref coordinates
-        val max_ref_interval = mergeIntervals(x.map(_.rcoords))
-        //create merged paf entry
-        new PAFentry(read_name, read_length, max_query_interval, x.head.ori, all_refs.head, x.head.ref_length,
-          max_ref_interval, mapq)
-      }
-    }
-
-    /**
-      * Tail-recursive method to merge a given list of alignments sorted by starting position in the read (query)
-      * @param remaining List of sorted alignments
-      * @param acc Accumulating list of overlapping alignments
-      * @param merged Final merged list of overlapping alignments
-      * @return List[PAFentry]
-      */
-    def _mergeAlignments(remaining: List[PAFentry], acc: List[PAFentry], merged: List[PAFentry]): List[PAFentry] = {
-      //no more alignments to process
-      if(remaining.isEmpty){
-        //no accumulated alignments to process
-        if(acc.isEmpty) merged.reverse
-        //merge remaining accumulated alignments
-        else (mergeOverlaps(acc) :: merged).reverse
-      }
-      //for when acc is empty (i.e. first iteration)
-      else if(acc.isEmpty) _mergeAlignments(remaining.tail, List(remaining.head), merged)
-      //still alignments to process
-      else {
-        //alignment is on the same reference
-        val is_same_ref = remaining.head.rname == acc.head.rname
-        //alignment is on teh same orientation
-        val is_same_ori = remaining.head.ori == acc.head.ori
-        //current alignment overlaps with accumulated alignments, add to acc
-        if(is_same_ref && is_same_ori && computeOverlap(remaining.head.qcoords, acc.head.qcoords) > 0)
-          _mergeAlignments(remaining.tail, remaining.head :: acc, merged)
-        //current alignment does not overlap with accumulated alignment, process acc and add current to new acc
-        else {
-          //merge overlapping alignments
-          val merged_alignment = mergeOverlaps(acc)
-          _mergeAlignments(remaining.tail, List(remaining.head), merged_alignment :: merged)
-        }
-      }
-    }
-    _mergeAlignments(alignments.sortBy(_.qcoords._1), List(), List()).reverse
-  }
-  */
 
   /**
     * Method to curate all alignments per sequence given a PAF-formatted file. Returns a map containing assigned unique
@@ -260,7 +160,7 @@ object PAFutils {
         }
       }
     }
-    _curateAlignmentsPerSeq(List(), 0, initial_map.toList, List())
+    _curateAlignmentsPerSeq(List(), initial_id, initial_map.toList, List())
   }
 
 }

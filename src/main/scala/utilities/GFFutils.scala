@@ -85,7 +85,7 @@ object GFFutils {
                           label: Set[String],
                           name_tag: String,
                           showWarning: Boolean,
-                          id: Int = 0
+                          id: Int = 0 //ADD ACC. MAP OF CHRM -> FINGERTREE
                          ): (FingerTree, Map[Int, (String,(Int,Int))], Map[Int, String], Int, String) = {
 
     /**
@@ -118,6 +118,7 @@ object GFFutils {
     //iterate through each line and add annotations to finger tree
     val (fingertree, id2interval, id2genome, gene_id, sequence_id) = openFileWithIterator(file)
       .foldLeft((empty_fingertree, Map[Int, (String,(Int,Int))](), Map[Int, String](), id, "")) {
+        //PASS ACC. MAP OF CHRM -> FINGERTREE
       case ((_fingertree, _geneid2description, _geneid2genome, _gene_id, _sequence_id), line) => {
         //move on if its a comment line
         if (line.startsWith("#")) (_fingertree, _geneid2description, _geneid2genome, _gene_id, _sequence_id)
@@ -137,6 +138,7 @@ object GFFutils {
           else {
             //parse gff line
             val gene = toGFFLine(columns)
+            //FETCH CHRM'S FINGERTREE AND ADD GENE TO THAT FINGETREE
             //add gene to finger tree
             (_fingertree.+((gene.start, gene.end), _gene_id),
               //add gene id to description
