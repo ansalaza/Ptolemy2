@@ -14,13 +14,15 @@ object Ptolemy2 {
       "Usage: java -jar ptolemy2.jar [tool]\n\n" +
         "PTOLEMY TOOLS\n" +
         "gene-graph            Construct a gene graph from a given set of genomes.\n" +
-        "path-metrics          Summarize metrics for all paths in a GFA file.\n"+
+        "path-metrics          Summarize metrics for all paths in a GFA file.\n" +
         "gfa-converter         Convert a GFA-file to various formats.\n\n" +
         "MINIMAP2 AUTOMATION TOOLS\n" +
         "index-genomes         Index a given list of genomes with minimap2\n" +
         "pairwise-alignment    Automate pariwsie genome alignment with minimap2\n\n" +
         "MISC. TOOLS\n" +
-        "alignment-metrics     Obtain summary metrics for an alignment in PAF-format.\n"
+        "alignment-metrics     Obtain summary metrics for an alignment in PAF-format.\n" +
+        "fetch-subsequences      Obtain (sub)sequences from a given read/assembly file\n\n"
+
       )
 
     if (args.length == 0) {
@@ -35,6 +37,7 @@ object Ptolemy2 {
         case "pairwise-alignment" => genome_alignment.PairwiseAlignment.main(args.drop(1))
 
         case "alignment-metrics" => metrics.AlignmentMetrics.main(args.drop(1))
+        case "fetch-subsequences" => misc.FetchSubSequences.main(args.drop(1))
 
         case _ => println(help)
       }
