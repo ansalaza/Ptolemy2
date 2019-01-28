@@ -2,6 +2,7 @@ package utilities
 
 import utilities.AlignmentUtils.Alignment
 import utilities.FileHandling.timeStamp
+import utilities.GFFutils.Gene
 import utilities.GeneProjectionUtils.{FingerTree, filterByCoverage, projectGenes}
 import utilities.GeneGraphUtils._
 
@@ -74,8 +75,8 @@ object GenomeGeneGraph {
       * @return Syntenic anchors as 2-tuple of gene IDs
       */
     @tailrec def findSytenicAnchors(remaining_alignments: List[(Int, List[Alignment])],
-                                    syntenic_anchors: List[(Int, Int)],
-                                   ): List[(Int, Int)] = {
+                                    syntenic_anchors: List[(Gene, Gene)],
+                                   ): List[(Gene, Gene)] = {
 
       //check whether there are still alignments to process
       remaining_alignments match {
@@ -133,7 +134,9 @@ object GenomeGeneGraph {
     val syntenic_anchors = findSytenicAnchors(alignments, List())
     println(timeStamp + "Creating syntenic anchor graph")
     //create non-directed syntenic anchor graph
-    val sa_graph = syntenic_anchors.groupBy(_._1).mapValues(_.map(_._2)) ++ syntenic_anchors.groupBy(_._2).mapValues(_.map(_._1))
+    val sa_graph = {
+      syntenic_anchors.groupBy(_._1).mapValues(_.map(_._2)) ++ syntenic_anchors.groupBy(_._2).mapValues(_.map(_._1))
+    }.map(x => (x._1.id, x._2.map(_.id)))
     println(timeStamp + "--Identifying connected components")
     //fetch ortholog clusters, which are connected components
     val sa_ccs = getConnectedComponents(sa_graph)
@@ -159,13 +162,14 @@ object GenomeGeneGraph {
           //get current genome path using new gene ids
           val local_genome_paths = {
             //sort by gene id, get new gene ids, DO NOT collapse overlapping cases (for now)
-            genes.toList.sortBy(_._2).map(x => new PathEntry(new_ids.getOrElse(x._2, x._2), '+'))
+            genes.toList.sortBy(_._2.id).map(x => new Gene(new_ids.getOrElse(x._2.id, x._2.id), '+'))
           }
           //get all genes for current genome, get all edges and update gene graph
           val local_gene_graph = {
-            local_genome_paths.sliding(2).foldLeft(gene_graph)((acc_gene_graph, _edge) => {
+            if(local_genome_paths.size == 1) gene_graph + (local_genome_paths.head.id -> List())
+            else local_genome_paths.sliding(2).foldLeft(gene_graph)((acc_gene_graph, _edge) => {
               //get new node IDs for the current two nodes
-              val (node1, node2) = (_edge.head.nodeID, _edge(1).nodeID)
+              val (node1, node2) = (_edge.head.id, _edge(1).id)
               //update node1's current edges
               val node1_current_edges = node2 :: acc_gene_graph.getOrElse(node1, List[Int]())
               //update node2's current edges
@@ -196,13 +200,14 @@ object GenomeGeneGraph {
         case ((node_cov, edge_cov), (genome, path)) => {
           //update node coverage
           val updated_node_coverage =
-            path.foldLeft(node_cov)((cov, gene) => cov + (gene.nodeID -> (cov.getOrElse(gene.nodeID, 0) + 1)))
+            path.foldLeft(node_cov)((cov, gene) => cov + (gene.id -> (cov.getOrElse(gene.id, 0) + 1)))
           //update edge coverage, both forward and reverse
           val updated_edge_coverage = {
+            if(path.size == 1) edge_cov
             //iterate through each edge
-            path.sliding(2).foldLeft(edge_cov)((cov, _edge) => {
+            else path.sliding(2).foldLeft(edge_cov)((cov, _edge) => {
               //set forward edge
-              val forward = (_edge.head.nodeID, _edge(1).nodeID)
+              val forward = (_edge.head.id, _edge(1).id)
               //self edge
               if (forward._1 == forward._2) {
                 //updated forward coverage +2

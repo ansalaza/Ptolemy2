@@ -3,7 +3,8 @@ package utilities
 import java.io.{File, PrintWriter}
 
 import utilities.FileHandling.openFileWithIterator
-import utilities.GeneGraphUtils.{GeneGraph, PathEntry}
+import utilities.GFFutils.Gene
+import utilities.GeneGraphUtils.{GeneGraph}
 
 /**
   * Author: Alex N. Salazar
@@ -27,9 +28,9 @@ object GFAutils {
       * @param _length
       * @return
       */
-    def makePathLine(path_name: String, path: List[PathEntry], _length: Option[Int] = None): String = {
+    def makePathLine(path_name: String, path: List[Gene], _length: Option[Int] = None): String = {
       val length = if (_length.isEmpty) "" else _length.get
-      val path_string = path.map(x => x.nodeID.toString + x.ori).mkString(",")
+      val path_string = path.map(x => x.id.toString + x.ori).mkString(",")
       "P\t" + path_name + "\t" + path_string + "\t" + length
     }
 
@@ -66,7 +67,7 @@ object GFAutils {
       */
     def ptolemyGraph2GFA(pw: PrintWriter,
                          graph: GeneGraph,
-                         paths: Map[String, List[PathEntry]],
+                         paths: Map[String, List[Gene]],
                          genome_node_coverage: Map[Int, Int],
                          genome_edge_coverage: Map[(Int,Int), Int],
                          alignment_node_coverage: Map[Int,Int],
@@ -158,34 +159,34 @@ object GFAutils {
       * Function to parse a path line from a GFA file.
       * @return 2-tuple as (Paths, optional size)
       */
-    def parsePathLine: String => (List[PathEntry], Option[Int]) = line => {
+    def parsePathLine: String => (String, List[Gene], Int) = line => {
       //split line
       val split = line.split("\t")
       assert(split.size >= 2, "Unexpected number of columns in line: " + line)
       //get path
       val path = {
-        if(split(2).isEmpty) List[PathEntry]()
+        if(split(2).isEmpty) List[Gene]()
         else {
           split(2).split(",").toList.map(x => {
             val (node, ori) = x.partition(_.isDigit)
             assert(ori.size == 1 && (ori.head == '-' || ori.head == '+'), "Unexpected orientation for path line: " + line)
-            new PathEntry(node.toInt,ori.head)
+            new Gene(node.toInt,ori.head)
           })
         }
       }
       //get size, if available
-      val size = if(split.size >= 4) None else Option(split(3).toInt)
+      //val size = if(split.size >= 4) None else Option(split(3).toInt)
       //return path and optional size
-      (path, size)
+      (split(1), path, split(3).toInt)
     }
 
     /**
       * Function to load GFA file given a file object
       * @return 2-tuple (GeneGraph and List of paths)
       */
-    def loadGFA: File => (GeneGraph, Map[String, List[PathEntry]]) = file => {
+    def loadGFA: File => (GeneGraph, Map[String, List[Gene]]) = file => {
       val (all_nodes, all_edges, all_paths) = {
-        openFileWithIterator(file).foldLeft((List[Int](), List[(Int, Int)](), List[(String, List[PathEntry])]())) {
+        openFileWithIterator(file).foldLeft((List[Int](), List[(Int, Int)](), List[(String, List[Gene])]())) {
           case ((nodes, edges, paths), line) => {
             val columns = line.split("\t")
             columns.head match {
@@ -194,7 +195,10 @@ object GFAutils {
                 val (node1, node2) = (columns(1).toInt, columns(3).toInt)
                 (nodes, (node1, node2) :: edges, paths)
               }
-              case "P" => (nodes, edges, (columns(1), parsePathLine(columns(2))._1) :: paths)
+              case "P" => {
+                val (id, path, size) = parsePathLine(columns(2))
+                (nodes, edges, (id, path) :: paths)
+              }
               case _ => (nodes, edges, paths)
             }
           }

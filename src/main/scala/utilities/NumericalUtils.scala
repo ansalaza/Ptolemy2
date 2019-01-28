@@ -21,4 +21,11 @@ object NumericalUtils {
     */
   def max: (Int, Int) => Int = (x, y) => if (x > y) x else y
 
+  /**
+    * Round a given double value by a given number of decimal places
+    * @return Double
+    */
+  def roundUp: (Double,Int) => Double = (value, decimal_places) =>
+    BigDecimal(value).setScale(decimal_places, BigDecimal.RoundingMode.HALF_UP).toDouble
+
 }

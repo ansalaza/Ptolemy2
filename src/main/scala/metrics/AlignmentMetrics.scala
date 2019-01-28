@@ -7,6 +7,7 @@ import utilities.PAFutils.curateAlignmentsPerSeq
 import utilities.FileHandling.{getFileName, timeStamp, verifyDirectory, verifyFile}
 import utilities.IntervalUtils.intervalSize
 import utilities.SequenceFormatUtils.computeSeqLengthMap
+import utilities.NumericalUtils.roundUp
 
 import scala.collection.immutable.HashSet
 
@@ -75,7 +76,7 @@ object AlignmentMetrics {
       ((curated_alignments.size.toDouble / readid2name.size) * 100) + "% mapped)")
     //create output file for alignment summary
     val pw_align = new PrintWriter(config.outputDir + "/" + getFileName(config.pafFile) + ".alignment_sizes.txt")
-    pw_align.println("ReadName\tRef\tStart\tEnd\tSize\tMAPQ")
+    pw_align.println("ReadName\tRef\tStart\tEnd\tSize\tMAPQ\tAlignCov")
     //create output file for breakpoints summary
     val pw_brk = new PrintWriter(config.outputDir + "/" + getFileName(config.pafFile) + ".breakpoints.txt")
     pw_brk.println("ReadName\tRef\tPosition")
@@ -92,14 +93,17 @@ object AlignmentMetrics {
     val mapped_reads = curated_alignments.foldLeft(HashSet[Int]()){case(observed,(read_id, alignments)) => {
       //get read name
       val (read_name, read_length) = readid2name(read_id)
-      if(read_name == "b990418a-a30c-47a6-b0dc-6fc9a7d67665") println(read_id, read_name, read_length, alignments)
       //check if there are multiple alignments
       val is_multi = alignments.size > 1
       //iterate through each read and output alignment
       alignments.foreach(alignment => {
+        //get size of alignment, in the reference
+        val ref_align_size = intervalSize(alignment.rcoords)
+        //get size of alignment, in the read
+        val read_align_size = intervalSize(alignment.qcoords)
         //output metric
         pw_align.println(read_name + "\t" + alignment.ref + "\t" + alignment.rcoords._1 + "\t" + alignment.rcoords._2 +
-          "\t" + intervalSize(alignment.rcoords) + "\t" + alignment.mapq)
+          "\t" + ref_align_size + "\t" + alignment.mapq + "\t" + roundUp(read_align_size.toDouble / read_length, 2))
       })
       //get breakpoints
       val breakpoints = getBreakPoints(alignments, read_length, config.minClipping)

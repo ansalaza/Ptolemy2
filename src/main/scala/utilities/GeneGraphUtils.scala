@@ -1,7 +1,8 @@
 package utilities
 
 import utilities.GFAutils.{GFAreader, GFAwriter}
-import utilities.GeneProjectionUtils.{FingerTree}
+import utilities.GFFutils.Gene
+import utilities.GeneProjectionUtils.FingerTree
 
 import scala.annotation.tailrec
 
@@ -25,31 +26,14 @@ object GeneGraphUtils extends GFAwriter with GFAreader {
   val empty_gene_graph = Map.empty[Int, List[Int]]
 
   /**
-    * Path node entry
-    */
-  case class PathEntry(nodeID: Int, ori: Char) {
-    /**
-      * Method to check whether give path entry is in forward orientation
-      * @return Boolean
-      */
-    def isForward(): Boolean = ori == '+'
-
-    /**
-      * Revers orientation of path entry
-      * @return PathEntry
-      */
-    def reverse(): PathEntry = new PathEntry(nodeID, (if(isForward) '-' else '+'))
-  }
-
-  /**
     * Type alias for paths
     */
-  type Paths = Map[String, List[PathEntry]]
+  type Paths = Map[String, List[Gene]]
 
   /**
     * Empty paths
     */
-  val empty_paths = Map.empty[String, List[PathEntry]]
+  val empty_paths = Map.empty[String, List[Gene]]
 
   /**
     * Type alias for node coverage
@@ -140,13 +124,13 @@ object GeneGraphUtils extends GFAwriter with GFAreader {
     * @return GeneGraph
     */
   def fingertree2GeneGraph(fingertree: FingerTree,
-                           initial_graph: GeneGraph = empty_gene_graph): (GeneGraph, List[PathEntry]) = {
+                           initial_graph: GeneGraph = empty_gene_graph): (GeneGraph, List[Gene]) = {
     //get path by gene ids and sort by id
-    val path = fingertree.toList.map(_._2).sorted.map(x => new PathEntry(x, '+'))
+    val path = fingertree.toList.sortBy(_._1._1).map(_._2)
     //iterate through each edge and create gene graph
     val updated_graph = path.sliding(2).foldLeft(initial_graph)((acc_graph, genes) => {
       //get nodes
-      val (node1, node2) = (genes.head.nodeID, genes(1).nodeID)
+      val (node1, node2) = (genes.head.id, genes(1).id)
       //get edges
       val node1_edges = node2 :: acc_graph.getOrElse(node1, List[Int]())
       val node2_edges = node1 :: acc_graph.getOrElse(node2, List[Int]())

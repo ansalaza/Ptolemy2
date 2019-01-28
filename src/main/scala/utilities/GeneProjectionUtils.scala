@@ -2,7 +2,7 @@ package utilities
 
 import de.sciss.fingertree.RangedSeq
 import utilities.AlignmentUtils.Alignment
-import utilities.GeneGraphUtils.PathEntry
+import utilities.GFFutils.Gene
 import utilities.IntervalUtils.rangeCoverage
 
 /**
@@ -16,10 +16,10 @@ object GeneProjectionUtils {
   /**
     * Type alias for finger tree data structure
     */
-  type FingerTree = RangedSeq[((Int, Int), Int), Int]
+  type FingerTree = RangedSeq[((Int, Int), Gene), Int]
 
   /** Empty figer tree data structure */
-  val empty_fingertree = RangedSeq.empty[((Int, Int), Int), Int](_._1, Ordering.Int)
+  val empty_fingertree = RangedSeq.empty[((Int, Int), Gene), Int](_._1, Ordering.Int)
 
   /**
     * Project genes onto a sequence given a list of alignments and the corresponding fingertree of the target genome.
@@ -31,10 +31,10 @@ object GeneProjectionUtils {
     * @param local_genes Fingertree of target genome
     * @return Gene projections onto a sequence as list of gene IDs
     */
-  def projectGenes(cov_filter: ((Int, Int), List[((Int, Int), Int)]) => List[((Int, Int), Int)])
+  def projectGenes(cov_filter: ((Int, Int), List[((Int, Int), Gene)]) => List[((Int, Int), Gene)])
                   (alignment: Alignment,
                    local_genes: FingerTree,
-                  ): List[PathEntry] = {
+                  ): List[Gene] = {
     //set orientation character
     val ori = if (alignment.isForward()) '+' else '-'
     //get alignment coordinates on reference genome
@@ -42,7 +42,7 @@ object GeneProjectionUtils {
     //get local projected genes, in order
     val projected = cov_filter(ref_coords, local_genes.filterOverlaps(ref_coords).toList).map(_._2)
     //adjust orientation
-    (if (alignment.isForward()) projected else projected.reverse).map(x => new PathEntry(x, ori))
+    (if (alignment.isForward()) projected else projected.reverse).map(x => new Gene(x.id, ori))
   }
 
   /**
@@ -54,7 +54,7 @@ object GeneProjectionUtils {
     * @return
     */
   def filterByCoverage(minAlignmentCov: Double
-                      ): ((Int, Int), List[((Int, Int), Int)]) => List[((Int, Int), Int)] = (read_range, genes) => {
+                      ): ((Int, Int), List[((Int, Int), Gene)]) => List[((Int, Int), Gene)] = (read_range, genes) => {
     //no genes to process, move one
     if (genes.isEmpty) genes
     //only one gene to process

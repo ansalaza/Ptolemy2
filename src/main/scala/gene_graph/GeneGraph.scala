@@ -37,7 +37,7 @@ object GeneGraph extends GFAwriter {
     val parser = new scopt.OptionParser[Config]("gene-graph") {
       opt[File]('g', "gff-files") required() action { (x, c) =>
         c.copy(gffFile = x)
-      } text ("Tab-delimited file cantaining full path all GFF3-formatted files, one per line.")
+      } text ("Tab-delimited file containing sample name and full path to GFF3-formatted file, one per line.")
       opt[String]("feature-types") required() action { (x, c) =>
         c.copy(featureTypes = x)
       } text ("Feature types in the GFF3 file to analyse as a string argument, comma-separated (i.e.the " +
@@ -97,9 +97,9 @@ object GeneGraph extends GFAwriter {
     /* START: PARSE GFF3-FORMATTED FILE INTO FINGER TREE DATA STRUCTURES */
     val (global_fingertree, global_description, global_origin) = {
       //first iterate through each gff and verify file is valid
-      val gff_files = openFileWithIterator(config.gffFile).toList.map(file => {
-        //create file
-        val gff_file = new File(file)
+      val gff_files = openFileWithIterator(config.gffFile).toList.map(line => {
+        //make file
+        val gff_file = new File(line)
         //verify
         verifyFile(gff_file)
         //return

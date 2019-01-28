@@ -4,7 +4,7 @@ import java.io.{File, PrintWriter}
 
 import utilities.FileHandling.{openFileWithIterator, timeStamp, verifyDirectory, verifyFile}
 import utilities.GFAutils.GFAreader
-import utilities.GeneGraphUtils.PathEntry
+import utilities.GFFutils.Gene
 
 /**
   * Author: Alex N. Salazar
@@ -18,6 +18,7 @@ object ArchitectureMetrics extends GFAreader {
   case class Config(
                      gfaFile: File = null,
                      outputDir: File = null,
+                     minLength: Int = -1,
                      prefix: String = null)
 
   def main(args: Array[String]) {
@@ -30,6 +31,10 @@ object ArchitectureMetrics extends GFAreader {
       } text ("Output directory to store indexed genomes.")
       opt[String]("prefix") required() action { (x, c) =>
         c.copy(prefix = x)
+      } text ("Prefix for output file.")
+      note("\nOPTIONAL\n")
+      opt[Int]("min-length") action { (x, c) =>
+        c.copy(minLength = x)
       } text ("Prefix for output file.")
     }
     parser.parse(args, Config()).map { config =>
@@ -45,7 +50,7 @@ object ArchitectureMetrics extends GFAreader {
       * Compare a given path and it's reverse form and return the smallest of the two
       * @return List[PathEntry]
       */
-    def getSmallestPath: List[PathEntry] => List[PathEntry] = path => {
+    def getSmallestPath: List[Gene] => List[Gene] = path => {
       //get hashcodes for forward and reverse
       val (forward,reverse) = (path, path.reverse.map(_.reverse()))
       //forward is smallest, returh path as is, else reverse it
@@ -56,7 +61,7 @@ object ArchitectureMetrics extends GFAreader {
     //fetch architectures from GFA file as 2-tuple: (architecture/path, (total instances, list of all names))
     val architectures = {
       //iterate through each line and process only path lines
-      openFileWithIterator(config.gfaFile).foldLeft(List[(String, List[PathEntry])]())((paths, line) => {
+      openFileWithIterator(config.gfaFile).foldLeft(List[(String, List[Gene])]())((paths, line) => {
         //split line
         val columns = line.split("\t")
         //check line type
@@ -64,9 +69,9 @@ object ArchitectureMetrics extends GFAreader {
           //path line
           case "P" => {
             //parse line and get path name and path
-            val (name, path) = (columns(1), parsePathLine(line)._1)
-            //only add if the path is not empty
-            if (path.isEmpty) paths
+            val (name, path, size) = parsePathLine(line)
+            //only add if the path is not empty or is large enough
+            if (path.isEmpty || (config.minLength != -1 && size < config.minLength)) paths
             else {
               //get all different orientations of current path
               val path_orientations = path.map(_.ori).toSet.toList
@@ -96,7 +101,7 @@ object ArchitectureMetrics extends GFAreader {
     //iterate through each architecture and output to disk
     architectures.foreach { case (path, (count, names)) => {
       pw.println(
-        path.map(x => x.nodeID.toString + x.ori).mkString(",") + "\t" +
+        path.map(x => x.id.toString + x.ori).mkString(",") + "\t" +
         count + "\t" +
         (path.map(_.ori).toSet.size - 1) + "\t" +
         names.mkString(","))

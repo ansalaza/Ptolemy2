@@ -56,7 +56,7 @@ object FetchSubSequences {
         //sequence id and coordinates were provided
         else {
           //sanity check
-          assert(split.size == 3, "Unexpected number of columns in the following line: " + line)
+          assert(split.size >= 3, "Unexpected number of columns in the following line: " + line)
           //ad to list
           (split.head, Option((split(1).toInt, split(2).toInt))) :: map
         }
@@ -69,7 +69,7 @@ object FetchSubSequences {
     //create output file
     val pw = {
       //get output name
-      val name = if (config.prefix == null) getFileName(config.sequencesFile) + ".subsequences" else config.prefix
+      val name = if (config.prefix == null) getFileName(config.configFile) + ".subsequences" else config.prefix
       //sanity check for not overwriting an existing file
       assert(!new File(config.outputDir + "/" + name + ".fa").exists(), "Output file already exist: " + name)
       new PrintWriter(config.outputDir + "/" + name + ".fa")

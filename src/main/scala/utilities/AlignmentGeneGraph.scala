@@ -4,8 +4,9 @@ import java.io.{File, PrintWriter}
 
 import utilities.AlignmentUtils.Alignment
 import utilities.FileHandling.openFileWithIterator
+import utilities.GFFutils.Gene
 import utilities.GeneGraphUtils._
-import utilities.GeneProjectionUtils.{filterByCoverage, FingerTree, projectGenes}
+import utilities.GeneProjectionUtils.{FingerTree, filterByCoverage, projectGenes}
 
 /**
   * Author: Alex N. Salazar
@@ -57,7 +58,7 @@ object AlignmentGeneGraph {
       //obtain architecture on read
       val architecture = {
         //no alignments, return empty
-        if (alignments.isEmpty) List[PathEntry]()
+        if (alignments.isEmpty) List[Gene]()
         //at least one alignment
         else {
           //sort alignments by query start
@@ -65,7 +66,7 @@ object AlignmentGeneGraph {
             //project genes in each alignment and then join together
             .map(alignment => gene_projector(alignment, fingertrees(alignment.ref))).flatten
             //replace gene id by new id assigned to respective ortholog cluster
-            .map(x => new PathEntry(sa_mapping.getOrElse(x.nodeID, x.nodeID), x.ori))
+            .map(x => new Gene(sa_mapping.getOrElse(x.id, x.id), x.ori))
         }
       }
       //get name and size
@@ -81,10 +82,10 @@ object AlignmentGeneGraph {
       openFileWithIterator(tmp_file).foldLeft((empty_gene_graph, empty_node_coverage, empty_edge_coverage)) {
         case ((gene_graph, node_coverage, edge_coverage), line) => {
           //parse path line
-          val (path, size) = parsePathLine(line)
+          val (id, path, size) = parsePathLine(line)
           //update node coverage
           val updated_node_coverage =
-            path.foldLeft(node_coverage)((cov, gene) => cov + (gene.nodeID -> (cov.getOrElse(gene.nodeID, 0) + 1)))
+            path.foldLeft(node_coverage)((cov, gene) => cov + (gene.id -> (cov.getOrElse(gene.id, 0) + 1)))
           //update edge coverage
           val (updated_gene_graph, updated_edge_coverage) = {
             //skip if only one gene
@@ -92,7 +93,7 @@ object AlignmentGeneGraph {
             //iterate through path as edges, update coverage
             else path.sliding(2).foldLeft((gene_graph, edge_coverage)) { case ((graph, cov), _edge) => {
               //set nodes
-              val (node1, node2) = (_edge.head.nodeID, _edge(1).nodeID)
+              val (node1, node2) = (_edge.head.id, _edge(1).id)
               //set edge
               val edge = (node1, node2)
               //add node2 to current edges of node1

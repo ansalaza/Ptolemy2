@@ -16,6 +16,25 @@ import utilities.GeneProjectionUtils.{FingerTree, empty_fingertree}
 object GFFutils {
 
   /**
+    * Case class for storing a gene
+    * @param id Unique gene ID
+    * @param ori Orientation of gene
+    */
+  case class Gene(id: Int, ori: Char) {
+    /**
+      * Method to check whether give path entry is in forward orientation
+      * @return Boolean
+      */
+    def isForward(): Boolean = ori == '+'
+
+    /**
+      * Revers orientation of path entry
+      * @return PathEntry
+      */
+    def reverse(): Gene = new Gene(id, (if(isForward) '-' else '+'))
+  }
+
+  /**
     * Missing gene description
     */
   private val missing_gene_description = "null"
@@ -27,16 +46,18 @@ object GFFutils {
     * @param feature
     * @param start
     * @param end
+    * @param ori
     * @param name
     */
-  private case class GFFLine(chrm: String, feature: String, start: Int, end: Int, name: String)
+  private case class GFFLine(chrm: String, feature: String, start: Int, end: Int, ori: Char, name: String)
 
   /**
     * Method to parse multiple GFF3-formatted files into a map of FingerTree data structures where the key is the
     * name of the contig/chromosome/scaffold. Curried function (first set of parameters are for initialization purposes)
+    *
     * @param feature_types Set of strings representing which lines in the GFF3 file to process (e.g. 'CDS', 'gene')
-    * @param name_tag Tag in the description column indicating name/description of gene. (e.g. 'Name=')
-    * @param gff_files List of GFF3-formatted files as File objects
+    * @param name_tag      Tag in the description column indicating name/description of gene. (e.g. 'Name=')
+    * @param gff_files     List of GFF3-formatted files as File objects
     * @param showWarning
     * @return Returns a 3-tuple:
     *         1 => Map(Sequence ID -> Finger tree)
@@ -46,17 +67,17 @@ object GFFutils {
   def parseMultiGFF2FingerTree(feature_types: Set[String], name_tag: String)
                               (gff_files: List[File],
                                showWarning: Boolean
-                              ): (Map[String, FingerTree], Map[Int, (String,(Int,Int))], Map[Int, String]) = {
+                              ): (Map[String, FingerTree], Map[Int, (String, (Int, Int))], Map[Int, String]) = {
     //iterate through each gff and build global fingertree and gene identifier maps
     val (_global_fingertree, _global_description, _global_origin, _global_id) = {
       //iterate through each gff and construct local finger trees and identifiers
       gff_files.foldLeft((Map[String, FingerTree](), Map[Int, (String, (Int, Int))](), Map[Int, String](), 0)) {
-        case ((fingertree, description, genome_origin, id), gff) => {
+        case ((fgt, description, genome_origin, id), gff) => {
           //get figertree, map, and sequence id for local gff
-          val (local_fingertree, geneid2description, geneid2genome, last_id, sequence_id) =
-            parseGFF2FingerTree(gff, feature_types, name_tag, showWarning, id)
+          val (updated_fgt, geneid2description, geneid2genome, last_id) =
+            parseGFF2FingerTree(gff, feature_types, name_tag, showWarning, id, fgt)
           //add local gff's finger tree
-          (fingertree + (sequence_id -> local_fingertree),
+          (updated_fgt,
             //add local gene identifiers
             geneid2description.toList.foldLeft(description.toList)((b, a) => a :: b).toMap,
             //add local gene ids to genome
@@ -85,8 +106,9 @@ object GFFutils {
                           label: Set[String],
                           name_tag: String,
                           showWarning: Boolean,
-                          id: Int = 0 //ADD ACC. MAP OF CHRM -> FINGERTREE
-                         ): (FingerTree, Map[Int, (String,(Int,Int))], Map[Int, String], Int, String) = {
+                          id: Int = 0,
+                          inititial_fingertree: Map[String, FingerTree] = Map()
+                         ): (Map[String, FingerTree], Map[Int, (String, (Int, Int))], Map[Int, String], Int) = {
 
     /**
       * Function to parse gff line and return GFFLine object
@@ -94,8 +116,14 @@ object GFFutils {
       * @return GFFLine object
       */
     def toGFFLine: Array[String] => GFFLine = line => {
+      //orientation of gene annotation
+      val orientation = line(6).head
+      assert(orientation == '+' || orientation == '-', "Unrecognized orientation: " + line)
+      //start and end coordinates, 0-based
+      val (start,end) = (line(3).toInt - 1, line(4).toInt)
+      assert(start < end, "Unexpected start/end coordinates: " + line)
       //if there are less than 9 columns, non-GFF3 format
-      new GFFLine(line(0), line(2), line(3).toInt - 1, line(4).toInt, getGeneName(line(8)))
+      new GFFLine(line(0), line(2), start, end, orientation, getGeneName(line(8)))
     }
 
     /**
@@ -116,39 +144,40 @@ object GFFutils {
     }
 
     //iterate through each line and add annotations to finger tree
-    val (fingertree, id2interval, id2genome, gene_id, sequence_id) = openFileWithIterator(file)
-      .foldLeft((empty_fingertree, Map[Int, (String,(Int,Int))](), Map[Int, String](), id, "")) {
+    val (fingertree, id2interval, id2genome, gene_id) = openFileWithIterator(file)
+      .foldLeft((inititial_fingertree, Map[Int, (String, (Int, Int))](), Map[Int, String](), id)) {
         //PASS ACC. MAP OF CHRM -> FINGERTREE
-      case ((_fingertree, _geneid2description, _geneid2genome, _gene_id, _sequence_id), line) => {
-        //move on if its a comment line
-        if (line.startsWith("#")) (_fingertree, _geneid2description, _geneid2genome, _gene_id, _sequence_id)
-        else {
-          //count number of columns
-          val columns = line.split("\t")
-          //non-GFF3 formatted file
-          if (columns.size < 9) {
-            //log message
-            if (showWarning) println(timeStamp + "----WARNING: found a non-GFF-formatted line. Skipping: " + line)
-            //move on
-            (_fingertree, _geneid2description, _geneid2genome, _gene_id, _sequence_id)
-          }
-          //not a line corresponding to any of the labels specified
-          else if (!label(columns(2))) (_fingertree, _geneid2description, _geneid2genome, _gene_id, _sequence_id)
-          //add to finger tree
+        case ((_fingertree, _geneid2description, _geneid2genome, _gene_id), line) => {
+          //move on if its a comment line
+          if (line.startsWith("#")) (_fingertree, _geneid2description, _geneid2genome, _gene_id)
           else {
-            //parse gff line
-            val gene = toGFFLine(columns)
-            //FETCH CHRM'S FINGERTREE AND ADD GENE TO THAT FINGETREE
-            //add gene to finger tree
-            (_fingertree.+((gene.start, gene.end), _gene_id),
-              //add gene id to description
-              _geneid2description + (_gene_id -> (gene.name, (gene.start, gene.end))),
-              //add gene id to genome, increment gene id, return last sequence id added
-              _geneid2genome + (_gene_id -> gene.chrm), _gene_id + 1, gene.chrm)
+            //count number of columns
+            val columns = line.split("\t")
+            //non-GFF3 formatted file
+            if (columns.size < 9) {
+              //log message
+              if (showWarning) println(timeStamp + "----WARNING: found a non-GFF-formatted line. Skipping: " + line)
+              //move on
+              (_fingertree, _geneid2description, _geneid2genome, _gene_id)
+            }
+            //not a line corresponding to any of the labels specified
+            else if (!label(columns(2))) (_fingertree, _geneid2description, _geneid2genome, _gene_id)
+            //add to finger tree
+            else {
+              //parse gff line
+              val gene = toGFFLine(columns)
+              //fetch current finger tree of chrm and update
+              val current = _fingertree.getOrElse(gene.chrm, empty_fingertree)
+              //add gene to finger tree
+              (_fingertree + (gene.chrm -> current.+((gene.start, gene.end), new Gene(_gene_id, gene.ori))),
+                //add gene id to description
+                _geneid2description + (_gene_id -> (gene.name, (gene.start, gene.end))),
+                //add gene id to genome, increment gene id, return last sequence id added
+                _geneid2genome + (_gene_id -> gene.chrm), _gene_id + 1)
+            }
           }
         }
       }
-    }
-    (fingertree, id2interval, id2genome, gene_id, sequence_id)
+    (fingertree, id2interval, id2genome, gene_id)
   }
 }
