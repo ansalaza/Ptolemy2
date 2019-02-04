@@ -117,22 +117,27 @@ object ArchitectureMetrics extends GFAreader {
       */
     def computeNormEditDist: (Int, Int) => Double = (_x, _y) => {
       //get architectures
-      val (x, y) = (architectures(_x), architectures(_y))
+      val (x, y) = (architectures(_x)._1.map(_.id), architectures(_y)._1.map(_.id))
       //get max size
-      val max_size = max(x._1.size, y._1.size).toDouble
-      //compute edit distance as:
-      val edit_distance = List(
-        //normal orientations
-        editDist(x._1.map(_.id), y._1.map(_.id)),
-        //y-reverse
-        editDist(x._1.map(_.id), y._1.reverse.map(_.id)),
-        //x-reverse
-        editDist(x._1.reverse.map(_.id), y._1.map(_.id)),
-        //both-reverse
-        editDist(x._1.reverse.map(_.id), y._1.reverse.map(_.id))
-      ).min
-      //return normalized edit distance
-      (edit_distance / max_size)
+      val max_size = max(x.size, y.size).toDouble
+      //no overlap, return max normalized distance
+      if(x.toSet.intersect(y.toSet).size == 0) 1.0
+      //compute distance for all possible forms
+      else {
+        //compute edit distance as:
+        val edit_distance = List(
+          //normal orientations
+          editDist(x, y),
+          //y-reverse
+          editDist(x, y.reverse),
+          //x-reverse
+          editDist(x.reverse, y),
+          //both-reverse
+          editDist(x.reverse, y.reverse)
+        ).min
+        //return normalized edit distance
+        (edit_distance / max_size)
+      }
     }
 
     /**

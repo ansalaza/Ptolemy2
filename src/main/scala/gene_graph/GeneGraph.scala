@@ -155,8 +155,8 @@ object GeneGraph extends GFAwriter {
     pw.close()
     //create id file
     val pw2 = new PrintWriter(config.outputDir + "/" + config.prefix + ".node_ids.txt")
-    global_description.toList.sortBy(_._1).foreach { case (node, (description, (start, end))) => {
-      pw2.println(node + "\t" + global_origin(node) + "\t" + start + "\t" + end + "\t" + description)
+    global_description.toList.sortBy(_._1).foreach { case (node, (description, ori, (start, end))) => {
+      pw2.println(node + "\t" + global_origin(node) + "\t" + (start+1) + "\t" + end + "\t" + ori + "\t" + description)
     }
     }
     pw2.close

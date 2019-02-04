@@ -67,11 +67,11 @@ object GFFutils {
   def parseMultiGFF2FingerTree(feature_types: Set[String], name_tag: String)
                               (gff_files: List[File],
                                showWarning: Boolean
-                              ): (Map[String, FingerTree], Map[Int, (String, (Int, Int))], Map[Int, String]) = {
+                              ): (Map[String, FingerTree], Map[Int, (String, Char, (Int, Int))], Map[Int, String]) = {
     //iterate through each gff and build global fingertree and gene identifier maps
     val (_global_fingertree, _global_description, _global_origin, _global_id) = {
       //iterate through each gff and construct local finger trees and identifiers
-      gff_files.foldLeft((Map[String, FingerTree](), Map[Int, (String, (Int, Int))](), Map[Int, String](), 0)) {
+      gff_files.foldLeft((Map[String, FingerTree](), Map[Int, (String, Char, (Int, Int))](), Map[Int, String](), 0)) {
         case ((fgt, description, genome_origin, id), gff) => {
           //get figertree, map, and sequence id for local gff
           val (updated_fgt, geneid2description, geneid2genome, last_id) =
@@ -108,7 +108,7 @@ object GFFutils {
                           showWarning: Boolean,
                           id: Int = 0,
                           inititial_fingertree: Map[String, FingerTree] = Map()
-                         ): (Map[String, FingerTree], Map[Int, (String, (Int, Int))], Map[Int, String], Int) = {
+                         ): (Map[String, FingerTree], Map[Int, (String, Char, (Int, Int))], Map[Int, String], Int) = {
 
     /**
       * Function to parse gff line and return GFFLine object
@@ -145,7 +145,7 @@ object GFFutils {
 
     //iterate through each line and add annotations to finger tree
     val (fingertree, id2interval, id2genome, gene_id) = openFileWithIterator(file)
-      .foldLeft((inititial_fingertree, Map[Int, (String, (Int, Int))](), Map[Int, String](), id)) {
+      .foldLeft((inititial_fingertree, Map[Int, (String, Char, (Int, Int))](), Map[Int, String](), id)) {
         //PASS ACC. MAP OF CHRM -> FINGERTREE
         case ((_fingertree, _geneid2description, _geneid2genome, _gene_id), line) => {
           //move on if its a comment line
@@ -171,7 +171,7 @@ object GFFutils {
               //add gene to finger tree
               (_fingertree + (gene.chrm -> current.+((gene.start, gene.end), new Gene(_gene_id, gene.ori))),
                 //add gene id to description
-                _geneid2description + (_gene_id -> (gene.name, (gene.start, gene.end))),
+                _geneid2description + (_gene_id -> (gene.name, gene.ori, (gene.start, gene.end))),
                 //add gene id to genome, increment gene id, return last sequence id added
                 _geneid2genome + (_gene_id -> gene.chrm), _gene_id + 1)
             }
