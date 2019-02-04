@@ -5,6 +5,9 @@ import java.io.{File, PrintWriter}
 import utilities.FileHandling.{openFileWithIterator, timeStamp, verifyDirectory, verifyFile}
 import utilities.GFAutils.GFAreader
 import utilities.GFFutils.Gene
+import utilities.NumericalUtils.max
+import atk.ProgressBar.progress
+import scala.annotation.tailrec
 
 /**
   * Author: Alex N. Salazar
@@ -46,17 +49,6 @@ object ArchitectureMetrics extends GFAreader {
   }
 
   def geneGraphMetrics(config: Config): Unit = {
-    /**
-      * Compare a given path and it's reverse form and return the smallest of the two
-      * @return List[PathEntry]
-      */
-    def getSmallestPath: List[Gene] => List[Gene] = path => {
-      //get hashcodes for forward and reverse
-      val (forward,reverse) = (path, path.reverse.map(_.reverse()))
-      //forward is smallest, returh path as is, else reverse it
-      if(forward.hashCode() < reverse.hashCode()) forward else reverse
-    }
-
     println(timeStamp + "Processing paths from GFA file")
     //fetch architectures from GFA file as 2-tuple: (architecture/path, (total instances, list of all names))
     val architectures = {
@@ -89,27 +81,156 @@ object ArchitectureMetrics extends GFAreader {
           case _ => paths
         }
       })
-        //group by architecture, map values as 2-tuples (total paths, path names), sort by total paths
-        .groupBy(_._2).mapValues(x => (x.size, x.map(_._1))).toList.sortBy(-_._2._1)
+        //group by architecture
+        .groupBy(_._2)
+        //sort by most frequent
+        .toList.sortBy(- _._2.size)
+        //assign unique IDs as keys and values as 4-tuples: (Path, Ori value, frequency, Seq IDs)
+        .foldLeft((Map[Int, (List[Gene], Int, Int, List[String])](), 0)) { case ((map, id), path) => {
+        (map + (id -> (path._1, path._1.map(_.ori).toSet.size - 1, path._2.size, path._2.map(_._1))), id + 1)
+      }
+      }._1
     }
     println(timeStamp + "Found a total of " + architectures.size + " unique paths")
-    println(timeStamp + "Writing to disk")
     //create output file
     val pw = new PrintWriter(config.outputDir + "/" + config.prefix + ".txt")
     //output header
-    pw.println("Path\tCount\tSingleOri\tNames")
+    pw.println("ID\tPath\tSingleOri\tCount\tNames")
+    //set order for columns for metrics and distance matrix
+    val rows = architectures.keys.toList.sorted
     //iterate through each architecture and output to disk
-    architectures.foreach { case (path, (count, names)) => {
+    rows.foreach(id => {
+      val (path, ori, count, names) = architectures(id)
       pw.println(
-        path.map(x => x.id.toString + x.ori).mkString(",") + "\t" +
-        count + "\t" +
-        (path.map(_.ori).toSet.size - 1) + "\t" +
-        names.mkString(","))
-    }
-    }
+        id + "\t" + path.map(x => x.id.toString + x.ori).mkString(",") + "\t" + ori + "\t" + count +
+          "\t" + names.mkString(","))
+    })
     pw.close()
+
+    /**
+      * Function to compute the normalized edit distance of two given architecture IDs. This is defined as:
+      * dist = min{ editDist(x,y), editDist(x, y.reverse), editDist(x.reverse, y), editDist(x.reverse, y.reverse }
+      * size = max{ x.size, y.size }
+      * 1 - ( dist / size)
+      *
+      * @return Double
+      */
+    def computeNormEditDist: (Int, Int) => Double = (_x, _y) => {
+      //get architectures
+      val (x, y) = (architectures(_x), architectures(_y))
+      //get max size
+      val max_size = max(x._1.size, y._1.size).toDouble
+      //compute edit distance as:
+      val edit_distance = List(
+        //normal orientations
+        editDist(x._1.map(_.id), y._1.map(_.id)),
+        //y-reverse
+        editDist(x._1.map(_.id), y._1.reverse.map(_.id)),
+        //x-reverse
+        editDist(x._1.reverse.map(_.id), y._1.map(_.id)),
+        //both-reverse
+        editDist(x._1.reverse.map(_.id), y._1.reverse.map(_.id))
+      ).min
+      //return normalized edit distance
+      (edit_distance / max_size)
+    }
+
+    /**
+      * Create a map of all pairwise distances (upper-diaganol only)
+      */
+    val dist_map = {
+      val all_pairwise = computeAllPairwise(architectures.keys.toList, List())
+      println(timeStamp + "Computing " + all_pairwise.size + " pairwise path-distances")
+      all_pairwise.map { case (subj, target) => {
+        progress(100000)
+        ((subj, target), computeNormEditDist(subj, target))
+      }}.toMap
+    }
+    //set output file
+    val pw2 = new PrintWriter(config.outputDir + "/" + config.prefix + ".distances.matrix")
+    pw2.println("$" + "\t" + rows.mkString("\t"))
+    //create distance matrix
+    rows.foreach(row => {
+      //output row name
+      pw2.print(row)
+      rows.foreach(column => {
+        if(row == column) pw2.print("\t" + 0.0)
+        else pw2.print("\t" + dist_map.getOrElse((row, column), dist_map((column, row))))
+      })
+      pw2.println
+    })
+    pw2.close
     println(timeStamp + "Successfully completed!")
   }
 
+  /**
+    * Function to compare a given path and it's reverse orientation and return the smallest of the to
+    *
+    * @return List[Gene]
+    */
+  def getSmallestPath: List[Gene] => List[Gene] = forward => {
+    //get forward and reverse orientation
+    val reverse = forward.reverse.map(_.reverse())
+    //set total path size
+    val total_size = forward.size
 
+    /**
+      * Get smallest path of forward and reverse orientation
+      *
+      * @param i Index
+      * @return List[Gene]
+      */
+    def _getSmallestPath(i: Int): List[Gene] = {
+      if (i == total_size) forward
+      else if (forward(i).id < reverse(i).id) forward
+      else if (forward(i).id > reverse(i).id) reverse
+      else _getSmallestPath(i + 1)
+    }
+
+    //get smallest path
+    _getSmallestPath(0)
+  }
+
+  /**
+    * Compute all possible pairwise interactions (upper-diagonal only) given a list of IDs
+    *
+    * @param ids
+    * @param interactions
+    * @return
+    */
+  @tailrec def computeAllPairwise(ids: List[Int], interactions: List[(Int, Int)]): List[(Int, Int)] = {
+    ids match {
+      //no more pairwise interactions to get
+      case Nil => interactions
+      //remainin interactions
+      case (subj :: tail) => {
+        //iterate and obtain upper diagonal for current id
+        computeAllPairwise(tail,
+          tail.foldLeft(interactions)((acc, target) => if (subj == target) acc else (subj, target) :: acc),
+        )
+      }
+    }
+  }
+
+  /**
+    * Edit distance implementation. Thanks! https://www.reddit.com/r/scala/comments/7sqtyf/scala_edit_distance_implementation/
+    *
+    * @param a
+    * @param b
+    * @tparam A
+    * @return
+    */
+  def editDist[A](a: Iterable[A], b: Iterable[A]): Int = {
+    val startRow = (0 to b.size).toList
+    a.foldLeft(startRow) { (prevRow, aElem) =>
+      (prevRow.zip(prevRow.tail).zip(b)).scanLeft(prevRow.head + 1) {
+        case (left, ((diag, up), bElem)) => {
+          val aGapScore = up + 1
+          val bGapScore = left + 1
+          val matchScore = diag + (if (aElem == bElem) 0 else 1)
+          List(aGapScore, bGapScore, matchScore).min
+        }
+      }
+    }.last
+  }
 }

@@ -23,7 +23,7 @@ object GeneProjectionUtils {
 
   /**
     * Project genes onto a sequence given a list of alignments and the corresponding fingertree of the target genome.
-    * It is orientation aware.
+    * It is orientation aware regarding the order of genes and the orientation of genes
     *
     * @param cov_filter  Function to extract overlapping genes given coordinates from the alignment and list of
     *                    overlapping genes from fingertree
@@ -35,14 +35,14 @@ object GeneProjectionUtils {
                   (alignment: Alignment,
                    local_genes: FingerTree,
                   ): List[Gene] = {
-    //set orientation character
-    val ori = if (alignment.isForward()) '+' else '-'
     //get alignment coordinates on reference genome
     val ref_coords = (alignment.rcoords._1, alignment.rcoords._2 + 1)
     //get local projected genes, in order
     val projected = cov_filter(ref_coords, local_genes.filterOverlaps(ref_coords).toList).map(_._2)
-    //adjust orientation
-    (if (alignment.isForward()) projected else projected.reverse).map(x => new Gene(x.id, ori))
+    //adjust order based on alignment orientation
+    (if (alignment.isForward()) projected else projected.reverse)
+      //adjust gene orientation based on alignment orientation
+      .map(x => if(alignment.isForward()) x else x.reverse())
   }
 
   /**

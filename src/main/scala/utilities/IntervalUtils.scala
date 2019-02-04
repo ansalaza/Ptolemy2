@@ -43,6 +43,8 @@ object IntervalUtils {
     */
   def computeOverlap(x: (Int,Int), y: (Int,Int)): Int = min(x._2, y._2) - max(x._1, y._1)
 
+  def isContained(x: (Int,Int), y: (Int,Int)): Boolean = x._1 <= y._1 && x._2 >= y._2
+
   /**
     * Method to compute the intersection between two intervals, if it exist. Here, intersection requires at least
     * more than 1nt

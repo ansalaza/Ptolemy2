@@ -30,7 +30,7 @@ object PAFutils {
   case class PAFentry(qname: String,
                       query_length: Int,
                       qcoords: (Int,Int),
-                      ori: Byte,
+                      ori: Char,
                       rname: String,
                       ref_length: Int,
                       rcoords: (Int,Int),
@@ -45,7 +45,7 @@ object PAFutils {
     //split line
     val split = line.split("\t")
     //get orientation column
-    val orientation = if(split(4) == "+") 0.toByte else 1.toByte
+    val orientation = split(4).head
     new PAFentry(split.head, split(1).toInt, (split(2).toInt, split(3).toInt),orientation, split(5), split(6).toInt,
       (split(7).toInt, split(8).toInt), split(11).toInt)
   }

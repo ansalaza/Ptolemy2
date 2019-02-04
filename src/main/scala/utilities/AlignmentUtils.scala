@@ -21,13 +21,13 @@ object AlignmentUtils {
     * @param rcoords
     * @param mapq
     */
-  case class Alignment(qcoords: (Int, Int), ref: String, ori: Byte, rcoords: (Int, Int), mapq: Int) {
+  case class Alignment(qcoords: (Int, Int), ref: String, ori: Char, rcoords: (Int, Int), mapq: Int) {
     /**
       * Alignment is in the forward-strand on the reference
       *
       * @return Boolean
       */
-    def isForward(): Boolean = ori == 0.toByte
+    def isForward(): Boolean = ori == '+'
     /**
       * Function to obtain the ref coordinates of an alignment considering the orientation of the alignment
       *

@@ -31,6 +31,7 @@ object GeneGraph extends GFAwriter {
                      prefix: String = null,
                      nameTag: String = null,
                      excludeFile: File = null,
+                     splitOri: Boolean = false,
                      showWarning: Boolean = false)
 
   def main(args: Array[String]) {
@@ -58,13 +59,15 @@ object GeneGraph extends GFAwriter {
         c.copy(prefix = x)
       } text ("Prefix for output file.")
       note("\nOPTIONAL\n")
+      opt[Unit]("split-ori") action { (x,c) =>
+        c.copy(splitOri = true)
+      } text ("Do not collapse orthologs unless they are in the same orientation.")
       opt[Int]("min-mapq") action { (x, c) =>
         c.copy(minMapq = x)
       } text ("Process only alignments with at least this MAPQ (default is 10).")
       opt[Double]("alignment-coverage") action { (x, c) =>
         c.copy(minAlignmentCov = x)
-      } text ("Mininum alignment coverage for a genes to be processed (default is 0.5).")
-
+      } text ("Mininum alignment coverage for a genes to be processed (default is 0.75).")
       opt[File]("exclude-sequence") action { (x, c) =>
         c.copy(excludeFile = x)
       } text ("Exclude sequence with the same IDs in the provided file (one per line).")
@@ -145,13 +148,13 @@ object GeneGraph extends GFAwriter {
 
     println(timeStamp + "Writing to disk")
     //create output file
-    val pw = new PrintWriter(config.outputDir + "/gene_graph.gfa")
+    val pw = new PrintWriter(config.outputDir + "/" + config.prefix + ".gfa")
     //output graph to gfa
     ptolemyGraph2GFA(pw, gene_graph, genome_paths, genome_node_coverage, genome_edge_coverage,
       alignment_node_coverage, alignment_edge_coverage, tmp_projection)
     pw.close()
     //create id file
-    val pw2 = new PrintWriter(config.outputDir + "/gene_graph.node_ids.txt")
+    val pw2 = new PrintWriter(config.outputDir + "/" + config.prefix + ".node_ids.txt")
     global_description.toList.sortBy(_._1).foreach { case (node, (description, (start, end))) => {
       pw2.println(node + "\t" + global_origin(node) + "\t" + start + "\t" + end + "\t" + description)
     }
@@ -223,7 +226,7 @@ object GeneGraph extends GFAwriter {
       /* END: CURATE GENOME ALIGNMENTS*/
       //construct ptolemy gene graph
       println(timeStamp + "Constructing gene graph from whole genome alignments")
-      ptolemyGeneGraph(fingertrees, curated_alignments, config.minAlignmentCov, id2genome)
+      ptolemyGeneGraph(fingertrees, curated_alignments, config.minAlignmentCov, id2genome, config.splitOri)
     }
   }
 

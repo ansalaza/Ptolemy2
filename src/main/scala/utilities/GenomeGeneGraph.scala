@@ -49,7 +49,8 @@ object GenomeGeneGraph {
   def ptolemyGeneGraph(fingertrees: Map[String, FingerTree],
                        alignments: List[(Int, List[Alignment])],
                        minCov: Double,
-                       id2seqname: Map[Int, (String, Int)]
+                       id2seqname: Map[Int, (String, Int)],
+                       splitOri: Boolean,
                       ): (GeneGraph, Paths, Map[Int, Int], Map[Int, Int], Map[(Int,Int), Int]) = {
     //set method to filter alignments by given minimum alignment coverage
     val alignment_filter = filterByCoverage(minCov)
@@ -118,7 +119,10 @@ object GenomeGeneGraph {
                     "query gene " + query_gene + " from " + query_seqname + " is " + projected_coords + " and " +
                     "contains the following overlapping genes in " + alignment.ref + " " + overlapping_genes)
                 }
-                overlapping_genes.foldLeft(local_acc_sa)((acc, overlap) => (query_gene._2, overlap._2) :: acc)
+                //user specified to collapse genes only when they have the same orientation, here they don't
+                if(splitOri && !overlapping_genes.forall(_._2.ori == query_gene._2.ori)) local_acc_sa
+                //add syntenic anchors
+                else overlapping_genes.foldLeft(local_acc_sa)((acc, overlap) => (query_gene._2, overlap._2) :: acc)
               }
             })
           })

@@ -28,7 +28,7 @@ object GFFutils {
     def isForward(): Boolean = ori == '+'
 
     /**
-      * Revers orientation of path entry
+      * Reverse orientation of geme entry
       * @return PathEntry
       */
     def reverse(): Gene = new Gene(id, (if(isForward) '-' else '+'))
