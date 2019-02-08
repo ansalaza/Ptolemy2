@@ -74,6 +74,12 @@ object AlignmentMetrics {
     }
     println(timeStamp + "Found " + curated_alignments.size + " aligned reads (" +
       ((curated_alignments.size.toDouble / readid2name.size) * 100) + "% mapped)")
+    //create output file for read length distribution
+    val pw_read_length = new PrintWriter(config.outputDir + "/" + getFileName(config.pafFile) + ".read_length.txt")
+    pw_read_length.println("Readname\tLength")
+    //output read length distribution
+    readid2name.foreach{case(id, (name,length)) => pw_read_length.println(name + "\t" + length)}
+    pw_read_length.close
     //create output file for alignment summary
     val pw_align = new PrintWriter(config.outputDir + "/" + getFileName(config.pafFile) + ".alignment_sizes.txt")
     pw_align.println("ReadName\tRef\tStart\tEnd\tSize\tMAPQ\tAlignCov")

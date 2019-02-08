@@ -87,7 +87,7 @@ object ArchitectureMetrics extends GFAreader {
         .toList.sortBy(- _._2.size)
         //assign unique IDs as keys and values as 4-tuples: (Path, Ori value, frequency, Seq IDs)
         .foldLeft((Map[Int, (List[Gene], Int, Int, List[String])](), 0)) { case ((map, id), path) => {
-        (map + (id -> (path._1, path._1.map(_.ori).toSet.size - 1, path._2.size, path._2.map(_._1))), id + 1)
+        (map + ((id) -> (path._1, path._1.map(_.ori).toSet.size - 1, path._2.size, path._2.map(_._1))), id + 1)
       }
       }._1
     }
@@ -203,7 +203,7 @@ object ArchitectureMetrics extends GFAreader {
     * @param interactions
     * @return
     */
-  @tailrec def computeAllPairwise(ids: List[Int], interactions: List[(Int, Int)]): List[(Int, Int)] = {
+  @tailrec def computeAllPairwise[A](ids: List[A], interactions: List[(A, A)]): List[(A, A)] = {
     ids match {
       //no more pairwise interactions to get
       case Nil => interactions
