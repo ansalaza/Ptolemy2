@@ -88,12 +88,12 @@ object IntervalUtils {
       * @return List[(Int,Int)]
       */
     @tailrec def _longestOverlappingIntervals(remaining_intervals: List[(Int,Int)],
-                                acc: List[(Int,Int)],
-                                longest: List[(Int,Int)]): List[(Int,Int)] = {
+                                              acc: List[(Int,Int)],
+                                              longest: List[(Int,Int)]): List[(Int,Int)] = {
       remaining_intervals match {
-          //no more intervals to process
+        //no more intervals to process
         case Nil => if(acc.isEmpty) longest else mergeIntervals(acc) :: longest
-          //intervals to process
+        //intervals to process
         case head :: tail => {
           //add head to acc
           if(acc.isEmpty) _longestOverlappingIntervals(tail, head :: acc, longest)
@@ -111,5 +111,7 @@ object IntervalUtils {
     //sort and run
     _longestOverlappingIntervals(intervals.sortBy(identity), List(), List()).reverse
   }
+
+
 
 }

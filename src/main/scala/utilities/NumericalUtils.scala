@@ -28,4 +28,8 @@ object NumericalUtils {
   def roundUp: (Double,Int) => Double = (value, decimal_places) =>
     BigDecimal(value).setScale(decimal_places, BigDecimal.RoundingMode.HALF_UP).toDouble
 
+  def abs: Int => Int = value => if(value >= 0) value else -1 * value
+
+  def mean: List[Int] => Int = values => (values.sum.toDouble / values.size).toInt
+
 }

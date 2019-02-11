@@ -70,7 +70,10 @@ object AlignmentMetrics {
           ((name, (id, length)) :: acc_list, id+1)
           }}
       }
-      curateAlignmentsPerSeq(config.pafFile, config.minMapq, last_id, initial_readid2namelength.toMap)
+      //curate alignments with 0 values for minMultimap and minDist to skip curation and get alignments as is
+      val tmp = curateAlignmentsPerSeq(config.pafFile, config.minMapq, 0, 0, last_id, initial_readid2namelength.toMap)
+      //since multimapping is not curated, there should be only one alignment per alignment interval
+      (tmp._1, tmp._2.map(x => (x._1, x._2.map(_.head))))
     }
     println(timeStamp + "Found " + curated_alignments.size + " aligned reads (" +
       ((curated_alignments.size.toDouble / readid2name.size) * 100) + "% mapped)")

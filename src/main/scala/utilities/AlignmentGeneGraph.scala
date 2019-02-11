@@ -6,7 +6,7 @@ import utilities.AlignmentUtils.Alignment
 import utilities.FileHandling.openFileWithIterator
 import utilities.GFFutils.Gene
 import utilities.GeneGraphUtils._
-import utilities.GeneProjectionUtils.{FingerTree, filterByCoverage, projectGenes}
+import utilities.GeneProjectionUtils.{FingerTree, filterByCoverage, projectGenes, adjustProjectionOri}
 
 /**
   * Author: Alex N. Salazar
@@ -40,7 +40,7 @@ object AlignmentGeneGraph {
     * @return 3-tuple (GeneGraph, Node coverage, Edge coverage, temp file of paths)
     */
   def alignmentGeneGraph(fingertrees: Map[String, FingerTree],
-                         alignments: List[(Int, List[Alignment])],
+                         alignments: List[(Int, List[List[Alignment]])],
                          minCov: Double,
                          id2seqname: Map[Int, (String, Int)],
                          initial_gene_graph: GeneGraph,
@@ -53,26 +53,36 @@ object AlignmentGeneGraph {
     val gene_projector = projectGenes(alignment_filter) _
     //set temporary projections file
     val pw = new PrintWriter(tmp_file)
-    //iterate through each alignment and project genes on reads
-    alignments.foreach { case (read, alignments) => {
-      //obtain architecture on read
+    //iterate through each alignment interval and project genes on sequence
+    alignments.foreach { case (read, alignment_interval) => {
+      //obtain architecture on sequence
       val architecture = {
         //no alignments, return empty
         if (alignments.isEmpty) List[Gene]()
         //at least one alignment
         else {
-          //sort alignments by query start
-          alignments.sortBy(_.qcoords._1)
-            //project genes in each alignment and then join together
-            .map(alignment => gene_projector(alignment, fingertrees(alignment.ref))).flatten
-            //replace gene id by new id assigned to respective ortholog cluster
-            .map(x => new Gene(sa_mapping.getOrElse(x.id, x.id), x.ori))
+          //iterate through each alignment interval and project genes
+          val seq_projections = alignment_interval.map(alignments => {
+            //project onto all alignments
+            val projections = alignments.map(alignment =>
+              (gene_projector(alignment, fingertrees(alignment.ref)), alignment.ori))
+            //get largest projection
+            //TODO: verify all projections with WGS alignments? what about partially-related overlapping seqs?
+            //println(projections)
+            //println(alignments)
+            //println
+            projections.sortBy(x => (x._1.size, if(x._1.isEmpty) Int.MaxValue else x._1.map(_.id).min)).head
+          }).filter(_._1.nonEmpty)
+          //no projections to make
+          if(seq_projections.isEmpty) List[Gene]()
+          //adjust orientation of final projection and replace gene id by new id assigned to respective ortholog cluster
+          else adjustProjectionOri(seq_projections).map(x => new Gene(sa_mapping.getOrElse(x.id, x.id), x.ori))
         }
       }
       //get name and size
       val (name, size) = id2seqname(read)
       //create and output path line
-      pw.println(makePathLine(name, architecture, Option(size)))
+      pw.println(makePathLine(name, architecture, size))
     }
     }
     //close tmp file

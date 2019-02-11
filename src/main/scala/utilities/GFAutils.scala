@@ -25,11 +25,9 @@ object GFAutils {
       *
       * @param path_name
       * @param path
-      * @param _length
       * @return
       */
-    def makePathLine(path_name: String, path: List[Gene], _length: Option[Int] = None): String = {
-      val length = if (_length.isEmpty) "" else _length.get
+    def makePathLine(path_name: String, path: List[Gene], length: Int): String = {
       val path_string = path.map(x => x.id.toString + x.ori).mkString(",")
       "P\t" + path_name + "\t" + path_string + "\t" + length
     }
@@ -98,7 +96,7 @@ object GFAutils {
         })
       }}
       //iterate through each path and report
-      paths.toList.foreach { case (genome, path) => pw.println(makePathLine(genome, path)) }
+      paths.toList.foreach { case (genome, path) => pw.println(makePathLine(genome, path, -1)) }
       //add read paths, if they exist
       if(tmp_paths != null) openFileWithIterator(tmp_paths).foreach(line => pw.println(line))
     }

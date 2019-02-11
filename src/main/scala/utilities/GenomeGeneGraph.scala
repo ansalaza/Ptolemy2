@@ -3,7 +3,7 @@ package utilities
 import utilities.AlignmentUtils.Alignment
 import utilities.FileHandling.timeStamp
 import utilities.GFFutils.Gene
-import utilities.GeneProjectionUtils.{FingerTree, filterByCoverage, projectGenes}
+import utilities.GeneProjectionUtils.{FingerTree, filterByCoverage, normalizePosition}
 import utilities.GeneGraphUtils._
 
 import scala.annotation.tailrec
@@ -16,21 +16,6 @@ import scala.annotation.tailrec
   * Description:
   */
 object GenomeGeneGraph {
-
-  /**
-    * Method to normalize position  in respects to some range [a,b] using the normalization variable function:
-    * {(b-a)*(x - min_x) / (max_x - min_x))} + a
-    *
-    * @param a     Left-boundary of range
-    * @param b     Right-boundary of range
-    * @param min_x Minimum value for all values in X
-    * @param max_x Maximum value for all values in X
-    * @param x     Value to be normalized
-    * @return Normalized value of x within range [a,b]
-    */
-  private def normalizePosition(a: Double, b: Double, min_x: Double,
-                        max_x: Double, x: Double): Int = (((b - a) * (x - min_x) / (max_x - min_x)) + a).toInt
-
 
   /**
     * Implementation of ptolemy.
@@ -47,7 +32,7 @@ object GenomeGeneGraph {
     *         new id) for the new assigned id for each ortholog cluster
     */
   def ptolemyGeneGraph(fingertrees: Map[String, FingerTree],
-                       alignments: List[(Int, List[Alignment])],
+                       alignments: List[(Int, List[List[Alignment]])],
                        minCov: Double,
                        id2seqname: Map[Int, (String, Int)],
                        splitOri: Boolean,
@@ -75,7 +60,7 @@ object GenomeGeneGraph {
       * @param syntenic_anchors     Accumulating syntenic anchors
       * @return Syntenic anchors as 2-tuple of gene IDs
       */
-    @tailrec def findSytenicAnchors(remaining_alignments: List[(Int, List[Alignment])],
+    @tailrec def findSytenicAnchors(remaining_alignments: List[(Int, List[List[Alignment]])],
                                     syntenic_anchors: List[(Gene, Gene)],
                                    ): List[(Gene, Gene)] = {
 
@@ -90,40 +75,43 @@ object GenomeGeneGraph {
           //get query's finger tree
           val query_finger_tree = fingertrees(query_seqname)
           //iterate through each alignment and construct ptolemy's gene graph
-          val sa = current_alignment._2.foldLeft(syntenic_anchors)((acc_sa, alignment) => {
-            //get overlapping genes in current query's aligned sequence
-            val query_local_genes = alignment_filter(alignment.qcoords, query_finger_tree.filterOverlaps(alignment.qcoords).toList)
-            //println("LOCAL GENES: " + query_local_genes)
-            //println(query_local_genes)
-            //determine syntenic anchors by identifying overlapping genes between query and ref
-            query_local_genes.foldLeft(acc_sa)((local_acc_sa, query_gene) => {
-              //println("PROCESSING: " + query_gene)
-              //project the coordinates of the current query gene onto the coordinates of the aligned ref sequence
-              val projected_coords = (
-                normalizePosition(alignment.rcoords._1, alignment.rcoords._2, alignment.qcoords._1,
-                  alignment.qcoords._2, query_gene._1._1),
-                normalizePosition(alignment.rcoords._1, alignment.rcoords._2, alignment.qcoords._1,
-                  alignment.qcoords._2, query_gene._1._2)
-              )
-              //println(projected_coords)
-              //get overlapping genes with ref
-              val overlapping_genes =
-              alignment_filter(projected_coords, fingertrees(alignment.ref).filterOverlaps(projected_coords).toList)
-              //println(overlapping_genes)
-              //no overlapping genes, move on
-              if (overlapping_genes.isEmpty) local_acc_sa
-              //one or more overlapping gene
-              else {
-                if (overlapping_genes.size > 1) {
-                  println("Multiple genes forming syntenic anchor: projected coords for " +
-                    "query gene " + query_gene + " from " + query_seqname + " is " + projected_coords + " and " +
-                    "contains the following overlapping genes in " + alignment.ref + " " + overlapping_genes)
+          val sa = current_alignment._2.foldLeft(syntenic_anchors)((acc_sa, alignment_interval) => {
+            //get overlapping genes in current query's aligned sequence; using head since query coords are all the
+            // same for each alignment interval
+            val query_local_genes = alignment_filter(alignment_interval.head.qcoords,
+              query_finger_tree.filterOverlaps(alignment_interval.head.qcoords).toList)
+            //determine syntenic anchors by identifying overlapping genes between query and ref(s)
+            query_local_genes.foldLeft(acc_sa)((interval_acc_sa, query_gene) => {
+              //iterate through each alignment in the alignment interval
+              alignment_interval.foldLeft(interval_acc_sa)((acc, alignment) => {
+                //println("PROCESSING: " + query_gene)
+                //project the coordinates of the current query gene onto the coordinates of the aligned ref sequence
+                val projected_coords = (
+                  normalizePosition(alignment.rcoords._1, alignment.rcoords._2, alignment.qcoords._1,
+                    alignment.qcoords._2, query_gene._1._1),
+                  normalizePosition(alignment.rcoords._1, alignment.rcoords._2, alignment.qcoords._1,
+                    alignment.qcoords._2, query_gene._1._2)
+                )
+                //println(projected_coords)
+                //get overlapping genes with ref
+                val overlapping_genes =
+                alignment_filter(projected_coords, fingertrees(alignment.ref).filterOverlaps(projected_coords).toList)
+                //println(overlapping_genes)
+                //no overlapping genes, move on
+                if (overlapping_genes.isEmpty) acc
+                //one or more overlapping gene
+                else {
+                  if (overlapping_genes.size > 1) {
+                    println("Multiple genes forming syntenic anchor: projected coords for " +
+                      "query gene " + query_gene + " from " + query_seqname + " is " + projected_coords + " and " +
+                      "contains the following overlapping genes in " + alignment.ref + " " + overlapping_genes)
+                  }
+                  //user specified to collapse genes only when they have the same orientation, here they don't
+                  if(splitOri && !overlapping_genes.forall(_._2.ori == query_gene._2.ori)) acc
+                  //add syntenic anchors
+                  else overlapping_genes.foldLeft(acc)((a, overlap) => (query_gene._2, overlap._2) :: a)
                 }
-                //user specified to collapse genes only when they have the same orientation, here they don't
-                if(splitOri && !overlapping_genes.forall(_._2.ori == query_gene._2.ori)) local_acc_sa
-                //add syntenic anchors
-                else overlapping_genes.foldLeft(local_acc_sa)((acc, overlap) => (query_gene._2, overlap._2) :: acc)
-              }
+              })
             })
           })
           //println(sa)

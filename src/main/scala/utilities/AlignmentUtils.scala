@@ -21,7 +21,11 @@ object AlignmentUtils {
     * @param rcoords
     * @param mapq
     */
-  case class Alignment(qcoords: (Int, Int), ref: String, ori: Char, rcoords: (Int, Int), mapq: Int) {
+  case class Alignment(qcoords: (Int, Int),
+                       ref: String,
+                       ori: Char,
+                       rcoords: (Int, Int),
+                       mapq: Int) {
     /**
       * Alignment is in the forward-strand on the reference
       *

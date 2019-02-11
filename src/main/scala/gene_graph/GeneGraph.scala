@@ -26,6 +26,8 @@ object GeneGraph extends GFAwriter {
                      gffFile: File = null,
                      outputDir: File = null,
                      minMapq: Int = 10,
+                     minMultiMap: Int = 100,
+                     minDist: Int = 100,
                      minAlignmentCov: Double = 0.5,
                      featureTypes: String = null,
                      prefix: String = null,
@@ -65,6 +67,12 @@ object GeneGraph extends GFAwriter {
       opt[Int]("min-mapq") action { (x, c) =>
         c.copy(minMapq = x)
       } text ("Process only alignments with at least this MAPQ (default is 10).")
+      opt[Int]("min-overlap") action { (x, c) =>
+        c.copy(minMultiMap = x)
+      } text ("Minimum overlap length for an alignment to be considered multi-mapping (default is 100).")
+      opt[Int]("min-dist") action { (x, c) =>
+        c.copy(minDist = x)
+      } text ("Minimum distance for 1D clustering of multimapping breakpoints (default is 100).")
       opt[Double]("alignment-coverage") action { (x, c) =>
         c.copy(minAlignmentCov = x)
       } text ("Mininum alignment coverage for a genes to be processed (default is 0.75).")
@@ -204,7 +212,8 @@ object GeneGraph extends GFAwriter {
       //curate whole genome alignments
       val (id2genome, curated_alignments) = {
         //curate alignments
-        val tmp = curateAlignmentsPerSeq(config.genomeAlignments, config.minMapq, initial_id, _id2genome.toMap)
+        val tmp = curateAlignmentsPerSeq(config.genomeAlignments, config.minMapq, config.minMultiMap, config.minDist,
+          initial_id, _id2genome.toMap)
         //if no exclusive file found, move on
         if (config.excludeFile == null) tmp
         //exclude specified sequences
@@ -242,13 +251,14 @@ object GeneGraph extends GFAwriter {
     }
     //user provided read alignments, create/update gene graph
     else {
+      sa_mappings.foreach(println)
       println(timeStamp + "Curating long-read alignments")
       //set temporary file to store projections of individual reads
       val tmp_file = new File(config.outputDir + "/.tmp_projections.gfa")
       //open and curate alignments
       val (id2readname, curated_alignments) = {
         //curate alignments
-        val tmp = curateAlignmentsPerSeq(config.readAlignments, config.minMapq)
+        val tmp = curateAlignmentsPerSeq(config.readAlignments, config.minMapq, config.minMultiMap, config.minDist)
         //if no exclusive file found, move on
         if (config.excludeFile == null) tmp
         else {
