@@ -65,8 +65,8 @@ object Minimap2Utils {
       *
       * @return
       */
-    def constructAlignmentCommand: (File, File) => Seq[String] = (subj, target) => {
-      Seq("minimap2", "-c") ++ Seq(target.getAbsolutePath, subj.getAbsolutePath)
+    def constructAlignmentCommand: (File, List[File]) => Seq[String] = (subj, targets) => {
+      Seq("minimap2", "-c") ++ Seq(subj.getAbsolutePath) ++ targets.map(_.getAbsolutePath)
     }
 
     /**
@@ -81,24 +81,21 @@ object Minimap2Utils {
         case Nil => "Done!"
         //remaining genomes to align
         case (subj_assembly, subj_index) :: tail => {
-          //iterate through each target genome and align with subj
-          tail.foreach{ case (target_assembly, target_index) => {
-            /*
+          /*
             Capture stdout and stderr.
             Note: using mutable stringbuilder, dirty but gets job done; may be optimizedlater
               */
-            var out = new StringBuilder
-            var err = new StringBuilder
-            val logger = ProcessLogger((o: String) => out.append(o + "\n"), (e: String) => err.append(e))
-            //set command
-            val command = constructAlignmentCommand(subj_assembly, target_index)
-            println("Running command")
-            //run alignment command
-            Process(command).!(logger)
-            println("Parsing output")
-            //process alignments
-            out.toString.split("\n").foreach(line => if (line.nonEmpty) pw.println(line))
-          }}
+          var out = new StringBuilder
+          var err = new StringBuilder
+          val logger = ProcessLogger((o: String) => out.append(o + "\n"), (e: String) => err.append(e))
+          //set command
+          val command = constructAlignmentCommand(subj_assembly, tail.map(_._1))
+          println("Running command")
+          //run alignment command
+          Process(command).!(logger)
+          println("Parsing output")
+          //process alignments
+          out.toString.split("\n").foreach(line => if (line.nonEmpty) pw.println(line))
           //return remaining genomes
           _pairwiseAlignment(tail)
         }

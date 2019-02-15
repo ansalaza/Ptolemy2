@@ -7,7 +7,9 @@ import utilities.GFAutils.GFAreader
 import utilities.GFFutils.Gene
 import utilities.NumericalUtils.max
 import atk.ProgressBar.progress
+
 import scala.annotation.tailrec
+import scala.collection.parallel.ForkJoinTaskSupport
 
 /**
   * Author: Alex N. Salazar
@@ -22,6 +24,7 @@ object ArchitectureMetrics extends GFAreader {
                      gfaFile: File = null,
                      outputDir: File = null,
                      minLength: Int = -1,
+                     exclude: File = null,
                      prefix: String = null)
 
   def main(args: Array[String]) {
@@ -39,6 +42,9 @@ object ArchitectureMetrics extends GFAreader {
       opt[Int]("min-length") action { (x, c) =>
         c.copy(minLength = x)
       } text ("Prefix for output file.")
+      opt[File]("exclude-ids") action { (x,c) =>
+        c.copy(exclude = x)
+      } text ("Exclude the following ID's in projected paths.")
     }
     parser.parse(args, Config()).map { config =>
       //check whether input file/directories exists
@@ -49,6 +55,8 @@ object ArchitectureMetrics extends GFAreader {
   }
 
   def geneGraphMetrics(config: Config): Unit = {
+    //get excluded IDs, if any
+    val exclude = if(config.exclude == null) Set[Int]() else openFileWithIterator(config.exclude).toList.map(_.toInt).toSet
     println(timeStamp + "Processing paths from GFA file")
     //fetch architectures from GFA file as 2-tuple: (architecture/path, (total instances, list of all names))
     val architectures = {
@@ -61,7 +69,11 @@ object ArchitectureMetrics extends GFAreader {
           //path line
           case "P" => {
             //parse line and get path name and path
-            val (name, path, size) = parsePathLine(line)
+            val (name, path, size) = {
+              val tmp = parsePathLine(line)
+              //exclude IDs in path, if any
+              if(exclude.isEmpty) tmp else (tmp._1, tmp._2.filterNot(x => exclude(x.id)), tmp._3)
+            }
             //only add if the path is not empty or is large enough
             if (path.isEmpty || (config.minLength != -1 && size < config.minLength)) paths
             else {
@@ -141,7 +153,7 @@ object ArchitectureMetrics extends GFAreader {
     }
 
     /**
-      * Create a map of all pairwise distances (upper-diaganol only)
+      * Create a map of all pairwise distances (upper-diagonal only)
       */
     val dist_map = {
       val all_pairwise = computeAllPairwise(architectures.keys.toList, List())

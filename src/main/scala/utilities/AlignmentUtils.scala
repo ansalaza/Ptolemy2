@@ -32,6 +32,7 @@ object AlignmentUtils {
       * @return Boolean
       */
     def isForward(): Boolean = ori == '+'
+
     /**
       * Function to obtain the ref coordinates of an alignment considering the orientation of the alignment
       *
@@ -47,9 +48,10 @@ object AlignmentUtils {
     * whether there is a breakpoint on the left/right-most boundaries in respects to the read (i.e. if the left and
     * right ends of a read has sequence that is not aligned and meets the minimum clipping parameter, these
     * boundaries are considered breakpoints).
-    * @param alignments List of alignments (assumed to be sorted by read coordinates)
+    *
+    * @param alignments   List of alignments (assumed to be sorted by read coordinates)
     * @param total_length Total length of read
-    * @param min_clip Minimum clipping size
+    * @param min_clip     Minimum clipping size
     * @return
     */
   def getBreakPoints(alignments: List[Alignment], total_length: Int, min_clip: Int): List[(String, Int)] = {
@@ -88,68 +90,73 @@ object AlignmentUtils {
 
   /**
     * Method to report multimapping within alignments of the same read.
-    * @param name Name of read
+    *
+    * @param name       Name of read
     * @param alignments All alignments of that read
     * @return List[String]
     */
   def reportMultiMapping(name: String, alignments: List[Alignment]): List[String] = {
     /**
       * Function to create a string of a multimapped instance
+      *
       * @return String
       */
-    def buildReport(intersection: (Int,Int), read_coords: (Int,Int), ref_coords: (Int,Int),
+    def buildReport(intersection: (Int, Int), read_coords: (Int, Int), ref_coords: (Int, Int),
                     forward: Boolean, size: Int): String = {
       /**
         * Get true interval of based on alignment orientation given the size of the overlap
+        *
         * @return (Int,Int)
         */
-      def getTrueInterval: Boolean => (Int,Int) = isForward => {
-        if(isForward && forward) (ref_coords._1, ref_coords._1 + size) else (ref_coords._2 - size, ref_coords._2)
+      def getTrueInterval: Boolean => (Int, Int) = isForward => {
+        if (isForward && forward) (ref_coords._1, ref_coords._1 + size) else (ref_coords._2 - size, ref_coords._2)
       }
+
       //get approximate intersection coordinates on ref
       val intersect_ref = {
         //left dove tail
-        if(intersection._1 == read_coords._1 && intersection._2 != read_coords._2) {
-          if(forward) (ref_coords._1, ref_coords._1 + size) else (ref_coords._2 - size, ref_coords._2)
+        if (intersection._1 == read_coords._1 && intersection._2 != read_coords._2) {
+          if (forward) (ref_coords._1, ref_coords._1 + size) else (ref_coords._2 - size, ref_coords._2)
         }
         //right dove
-        else if(intersection._1 != read_coords._1 && intersection._2 == read_coords._2) {
-          if(forward) (ref_coords._2 - size, ref_coords._2) else (ref_coords._1, ref_coords._1 + size)
+        else if (intersection._1 != read_coords._1 && intersection._2 == read_coords._2) {
+          if (forward) (ref_coords._2 - size, ref_coords._2) else (ref_coords._1, ref_coords._1 + size)
         }
         //contained
-        else if(intersection._1 == read_coords._1 && intersection._2 == read_coords._2) ref_coords
+        else if (intersection._1 == read_coords._1 && intersection._2 == read_coords._2) ref_coords
         //contains
         else (ref_coords._1 + intersection._1 - 1, ref_coords._2 - (ref_coords._2 - intersection._2))
       }
       name + "\t" + intersection._1 + "\t" + intersection._2 + "\t" + intersect_ref._1 + "\t" + intersect_ref._2 + "\t" + size
     }
-      //iterate through each alignment as subj
-      alignments.foldLeft(List[String]())((overlaps, subj) => {
-        //iterate through each alignmetn as target
-        alignments.foldLeft(overlaps)((local_overlaps, target) => {
-          //subj and target and are not the same and overlap in the read
-          if(subj != target && computeOverlap(subj.qcoords, target.qcoords) > 0) {
-            //obtain intersection
-            val intersection = computeIntersection(subj.qcoords, target.qcoords)
-            assert(intersection.nonEmpty, "Expected overlapping alignments for read " + name)
-            //build string report and add
-            buildReport(intersection.get, subj.qcoords, subj.rcoords, subj.isForward(),
-              intervalSize(intersection.get)) :: local_overlaps
-          }
-          //subj are the same alignment or there is no overlap
-          else local_overlaps
-        })
+    //iterate through each alignment as subj
+    alignments.foldLeft(List[String]())((overlaps, subj) => {
+      //iterate through each alignmetn as target
+      alignments.foldLeft(overlaps)((local_overlaps, target) => {
+        //subj and target and are not the same and overlap in the read
+        if (subj != target && computeOverlap(subj.qcoords, target.qcoords) > 0) {
+          //obtain intersection
+          val intersection = computeIntersection(subj.qcoords, target.qcoords)
+          assert(intersection.nonEmpty, "Expected overlapping alignments for read " + name)
+          //build string report and add
+          buildReport(intersection.get, subj.qcoords, subj.rcoords, subj.isForward(),
+            intervalSize(intersection.get)) :: local_overlaps
+        }
+        //subj are the same alignment or there is no overlap
+        else local_overlaps
       })
+    })
   }
 
 
   /**
     * Method to obtain unaligned regions given a list of alignments and a total sequence length
-    * @param alignments List of alignments of some sequence
+    *
+    * @param alignments   List of alignments of some sequence
     * @param total_length Total lengt of sequence
     * @return List[(Int,Int)]
     */
-  def getUnalingedRegions(alignments: List[Alignment], total_length: Int): List[(Int,Int)] = {
+  def getUnalingedRegions(alignments: List[Alignment], total_length: Int): List[(Int, Int)] = {
     //construct longest overlapping intervals
     val longest_overlapping_intervals = longestOverlappingIntervals(alignments.map(_.qcoords))
     //determine whether left end of read is unaligned
@@ -169,6 +176,7 @@ object AlignmentUtils {
 
     /**
       * Function to add the unaligned regions to the front and end of a list
+      *
       * @return List[(Int,Int)]
       */
     def addEndUnaligned: List[(Int, Int)] => List[(Int, Int)] = intervals => {
@@ -240,6 +248,50 @@ object AlignmentUtils {
     }
     //only call internal method if there are at least two different alignments
     if (alignments.size < 2) List() else _getMultiMapping(alignments.sortBy(_.qcoords), List(), List())
+  }
+
+  /**
+    * Method to create indirect pairwise alignments of a given multimapped region. Assumes that it is the same query
+    * sequence and coordinates aligned to multiple refs. Indirectly, the coordinates of these refs and combined
+    * together pairwise into an artificial alignment.
+    *
+    * @param multimapped_alignments List of multimapped alignments
+    * @return List of 2-tuples (ID of sequence, list of indirect alignments for current sequence)
+    */
+  def getCanonicalMultimappedRegions(multimapped_alignments: List[Alignment]): Map[String, List[(Int,Int)]] = {
+
+    def createCanonicalCoord: List[Alignment] => (String, (Int,Int)) = alignments => {
+      (alignments.head.ref, longestOverlappingIntervals(alignments.map(_.rcoords)).head)
+    }
+
+    /**
+      * Tail-recursive method to create indirect pairwise alignments between refs of the same query sequence
+      *
+      * @param remaining Remaining list of alignments
+      * @return same as parent method
+      */
+    @tailrec def canonicalRegions(remaining: List[Alignment],
+                                  acc: List[Alignment],
+                                  canonicals: List[(String,(Int,Int))]
+                                 ): List[(String,(Int,Int))] = {
+      remaining match {
+        case Nil => if(acc.isEmpty) canonicals else createCanonicalCoord(acc) :: canonicals
+        case (head :: tail) => {
+          if(acc.isEmpty) canonicalRegions(tail, List(head), canonicals)
+          else {
+            //overlaps with current acc
+            if(head.ref == acc.head.ref && acc.exists(a => computeOverlap(head.rcoords, a.rcoords) > 0))
+              canonicalRegions(tail, head :: acc, canonicals)
+            else canonicalRegions(tail, List(head), createCanonicalCoord(acc) :: canonicals)
+          }
+        }
+      }
+    }
+    println("HERE")
+    multimapped_alignments.sortBy(x => (x.ref, x.rcoords)).foreach(println)
+    //create all pairwise instances, group by seq ID, create list of 2-tuples
+    canonicalRegions(multimapped_alignments.sortBy(x => (x.ref, x.rcoords)), List(), List())
+      .groupBy(_._1).mapValues(_.map(_._2))
   }
 
 }

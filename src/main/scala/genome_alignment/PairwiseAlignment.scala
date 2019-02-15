@@ -5,6 +5,7 @@ import java.io.File
 import utilities.FileHandling.{verifyDirectory, verifyFile, openFileWithIterator, timeStamp, getFileName}
 
 import utilities.Minimap2Utils.pairwiseAlignment
+import utilities.SequenceFormatUtils.computeSeqLengthMap
 
 /**
   * Author: Alex N. Salazar
@@ -46,7 +47,7 @@ object PairwiseAlignment {
     val all_indeces = config.indexDir.listFiles().toList.sortBy(_.getName)
     //get all genome assembly paths
     val all_assemblies = openFileWithIterator(config.genomesFile).toList.map(new File(_)).sortBy(_.getName)
-    //zip together indeces and assemblies
+    //zip together indeces and assemblies and sort by genome length
     val assembly2index = {
       //sanity check that number of files match
       assert(all_assemblies.size == all_indeces.size, "Number of assemblies does not match number of index files")
@@ -61,7 +62,8 @@ object PairwiseAlignment {
         //verify they correspond
         assert(getFileName(assembly) == getFileName(index), "Name of assembly file does not match index file")
       }}
-      tmp
+      //sort by largest genome
+      tmp.sortBy(x => -computeSeqLengthMap(x._1).values.sum)
     }
     println(timeStamp + "Found " + assembly2index.size + " genomes")
     println("Performing pairwise genome alignment:")

@@ -2,14 +2,16 @@ package gene_graph
 
 import java.io.{File, PrintWriter}
 
-import utilities.GeneGraphUtils.{GeneGraph, Paths, empty_gene_graph, empty_paths}
+import utilities.GeneGraphUtils.{GeneGraph, Paths, createSAgraph, defineCanonicalIDs, empty_gene_graph, empty_paths, getConnectedComponents}
 import utilities.FileHandling.{openFileWithIterator, timeStamp, verifyDirectory, verifyFile}
 import utilities.GFFutils.parseMultiGFF2FingerTree
-import utilities.PAFutils.{curateAlignmentsPerSeq}
+import utilities.PAFutils.curateAlignmentsPerSeq
 import utilities.GFAutils.GFAwriter
-import utilities.GeneProjectionUtils.{FingerTree}
+import utilities.GeneProjectionUtils.FingerTree
 import utilities.AlignmentGeneGraph.alignmentGeneGraph
-import utilities.GenomeGeneGraph.ptolemyGeneGraph
+import utilities.AlignmentUtils.{Alignment, getCanonicalMultimappedRegions}
+import utilities.GenomeGeneGraph.{findSytenicAnchors, ptolemyGeneGraph}
+import utilities.IntervalUtils.longestOverlappingIntervals
 
 /**
   * Author: Alex N. Salazar
@@ -233,9 +235,18 @@ object GeneGraph extends GFAwriter {
         }
       }
       /* END: CURATE GENOME ALIGNMENTS*/
+      //identify syntenic anchors
+      val sa_graph = {
+        //create SA graph
+        createSAgraph(
+          //identify all syntenic anchors
+        findSytenicAnchors(fingertrees, id2genome, config.minAlignmentCov, config.splitOri,
+          curated_alignments)
+        )
+      }
       //construct ptolemy gene graph
       println(timeStamp + "Constructing gene graph from whole genome alignments")
-      ptolemyGeneGraph(fingertrees, curated_alignments, config.minAlignmentCov, id2genome, config.splitOri)
+      ptolemyGeneGraph(fingertrees, sa_graph)
     }
   }
 
@@ -251,7 +262,6 @@ object GeneGraph extends GFAwriter {
     }
     //user provided read alignments, create/update gene graph
     else {
-      sa_mappings.foreach(println)
       println(timeStamp + "Curating long-read alignments")
       //set temporary file to store projections of individual reads
       val tmp_file = new File(config.outputDir + "/.tmp_projections.gfa")
@@ -277,6 +287,76 @@ object GeneGraph extends GFAwriter {
         }
       }
       println(timeStamp + "Curated alignments from a total of " + id2readname.size + " sequences")
+      /**
+      //get all multimap alignment intervals
+      val low_qual_regions = curated_alignments.foldLeft(Map[String, List[(Int,Int)]]()){
+        //iterate through curated alignments
+        case (multimaps, (id, alignment_intervals)) => {
+          //for each curated alignment interval, check number of alignments
+          alignment_intervals.foldLeft(multimaps)((acc, alignments) =>
+            //only add alignments if they are a multimapped region
+            if(alignments.size == 1) acc
+            else {
+              //update map with current ref multimap coordinates
+              alignments.foldLeft(acc)((a, alignment) => {
+                println(alignment)
+                val fetch = a.getOrElse(alignment.ref, List[(Int,Int)]())
+                a + (alignment.ref -> (alignment.rcoords :: fetch))
+              })
+            }
+          )
+        }}//obtain canonical multimap regions
+        .mapValues(x => longestOverlappingIntervals(x).sortBy(identity))
+      //log low quality regions
+      if(low_qual_regions.nonEmpty){
+        println(timeStamp + "Found " + low_qual_regions.values.map(_.size).sum + " ambiguous regions. Omitting:")
+        low_qual_regions.foreach(x => {
+          println(timeStamp + "--" + x._1)
+          x._2.foreach(y => println(timeStamp + "----" + y))
+        })
+      }
+        */
+      /**
+      //update SA mapping , if needed
+      val updated_sa_mapping = {
+        //get all multimap alignment intervals
+        val multimapped = curated_alignments.foldLeft(List[(String, List[List[Alignment]])]()){
+          //iterate through curated alignments
+          case (multimaps, (id, alignment_intervals)) => {
+            //for each curated alignment interval, check number of alignments
+          alignment_intervals.foldLeft(multimaps)((acc, alignments) =>
+            //only add alignments if they are a multimapped region
+            if(alignments.size == 1) acc
+            else pairwiseTargetAlignments(alignments).foldLeft(acc)((a, b) => b :: a)
+            )
+        }}
+        if(multimapped.isEmpty) sa_mappings
+        else {
+          println(timeStamp + "Found " + multimapped.size + " multimapping regions")
+          println(timeStamp + "Updating SA mapping")
+          //create multimapped-based sa graph
+          val multimap_based_sa = {
+            //create ref name -> local ID
+            val ref2ID = multimapped.map(_._1).zipWithIndex.toMap
+            //find syntenica anchors
+            val sa = findSytenicAnchors(fingertrees, ref2ID.map(x => (x._2, (x._1, -1))), config.minAlignmentCov, false,
+              multimapped.map(x => (ref2ID(x._1), x._2)))
+            //create SA graph
+            createSAgraph(sa)
+          }
+          //get local sa mappings
+          val local_mappings = defineCanonicalIDs(getConnectedComponents(multimap_based_sa))
+          println("LOCAL")
+          println(local_mappings)
+          println("PREVIOUS")
+          println(sa_mappings)
+          println(timeStamp + "Defined " + local_mappings.size + " new canonical mappings")
+          local_mappings.foldLeft(sa_mappings)((map, local) => map + (local._1 -> local._2))
+
+        }}
+      println("UPDATED")
+      updated_sa_mapping.foreach(println)
+        */
       println(timeStamp + "Constructing gene graph")
       //construct gene graph
       val results = alignmentGeneGraph(fingertrees, curated_alignments, config.minAlignmentCov, id2readname,

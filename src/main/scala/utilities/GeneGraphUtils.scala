@@ -139,4 +139,32 @@ object GeneGraphUtils extends GFAwriter with GFAreader {
     })
     (updated_graph, path)
   }
+
+  /**
+    * Function to create a non-directional syntenic-anchor graph based on a list of 2-tuples representing syntenic
+    * anchors. Returns map where key is gene ID and values is a list of IDs representing neighbouring gene IDs
+    * @return Map[Int, List[Int]
+    */
+  def createSAgraph: List[(Gene, Gene)] => Map[Int, List[Int]] = syntenic_anchors => {
+    //join map of gene -> edges and edges -> gene
+    (syntenic_anchors.groupBy(_._1).mapValues(_.map(_._2)) ++ syntenic_anchors.groupBy(_._2).mapValues(_.map(_._1)))
+      //create map of INTs
+      .map(x => (x._1.id, x._2.map(_.id)))
+  }
+
+  /**
+    * Define canonical (new) IDs given a list of connected components as list of set of gene IDs.
+    * @return Map[Int,Int]
+    */
+  def defineCanonicalIDs: List[Set[Int]] => Map[Int,Int] = sa_ccs => {
+    //iterate through each connected component
+    sa_ccs.foldLeft(List[(Int, Int)]())((gene_alignments, cc) => {
+      //get lowest gene ID
+      val merged_gene_id = cc.min
+      //iterate through each gene and add tuple making old gene id -> new gene id
+      cc.toList.foldLeft(gene_alignments)((local_gene_alignments, gene) => {
+        (gene, merged_gene_id) :: local_gene_alignments
+      })
+    }).toMap
+  }
 }

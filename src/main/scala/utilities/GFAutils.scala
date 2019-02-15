@@ -153,6 +153,14 @@ object GFAutils {
 
   trait GFAreader {
 
+    def parsePath: String => List[Gene] = line => {
+      line.split(",").toList.map(x => {
+        val (node, ori) = x.partition(_.isDigit)
+        assert(ori.size == 1 && (ori.head == '-' || ori.head == '+'), "Unexpected orientation for path line: " + line)
+        new Gene(node.toInt,ori.head)
+      })
+    }
+
     /**
       * Function to parse a path line from a GFA file.
       * @return 2-tuple as (Paths, optional size)
@@ -162,16 +170,7 @@ object GFAutils {
       val split = line.split("\t")
       assert(split.size >= 2, "Unexpected number of columns in line: " + line)
       //get path
-      val path = {
-        if(split(2).isEmpty) List[Gene]()
-        else {
-          split(2).split(",").toList.map(x => {
-            val (node, ori) = x.partition(_.isDigit)
-            assert(ori.size == 1 && (ori.head == '-' || ori.head == '+'), "Unexpected orientation for path line: " + line)
-            new Gene(node.toInt,ori.head)
-          })
-        }
-      }
+      val path = if(split(2).isEmpty) List[Gene]() else parsePath(split(2))
       //get size, if available
       //val size = if(split.size >= 4) None else Option(split(3).toInt)
       //return path and optional size

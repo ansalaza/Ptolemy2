@@ -254,8 +254,9 @@ object PAFutils {
       }
       //curate alignments with min multimap (overlap) length and min breakpoint distance for clustering
       else {
-        curateWithMultiMaps(minMultiMap, minDist)(entries)
+        curateWithMultiMaps(minMultiMap, minDist)(entries.sortBy(_.qcoords))
           .map(alignments => alignments.map(x => new Alignment(x.qcoords, x.rname, x.ori,x.rcoords, x.mapq)))
+          .sortBy(_.head.qcoords)
       }
     }
 

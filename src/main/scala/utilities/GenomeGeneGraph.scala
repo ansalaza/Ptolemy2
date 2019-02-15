@@ -18,51 +18,35 @@ import scala.annotation.tailrec
 object GenomeGeneGraph {
 
   /**
-    * Implementation of ptolemy.
-    * Constructs gene graph based on whole genome alignment. There are 3 main steps:
-    * 1). Finding syntenic anchors based gene projections from whole genome alignments
-    * 2). Identifying ortholog clusters based on connected components from syntenic anchor graph
-    * 3). Assignment of new canonical gene ID for each ortholog cluster
+    * Tail-recursive method to find syntenic anchors based on whole genome alignment. Pseudocode as follows:
     *
-    * @param fingertrees Map of genome -> fingertree data structure
-    * @param alignments  Curated list of all alignments per genome
-    * @param minCov      Minimum alignment coverage
-    * @param id2seqname  Map of id -> genome/chrm/contig/scaffold name
-    * @return 5-tuple as (GeneGraph, Paths, SA-mappings, Node coverage, Edge coverage). SA-mappings is map(old id ->
-    *         new id) for the new assigned id for each ortholog cluster
+    * Initialize empty list of 2-tuples representing 'syntenic anchors'
+    * For each genome:
+    * For each alignment of current genome in sorted order:
+    * Get all overlapping genes in query genome based on current alignment coordinates
+    * For each overlapping gene in the query:
+    * Project coordinates of overlapping gene onto target genome
+    * Identify overlapping gene(s) in target genome based on projected coordinates
+    * For each overlapping target gene:
+    * Add (query gene, target gene) to list of syntenic anchors
+    *
+    * @param alignments Curated list of all alignments per genome
+    * @param minCov     Minimum alignment coverage
+    * @param id2seqname Map of id -> genome/chrm/contig/scaffold name
+    * @return Syntenic anchors as 2-tuple of gene IDs
     */
-  def ptolemyGeneGraph(fingertrees: Map[String, FingerTree],
-                       alignments: List[(Int, List[List[Alignment]])],
-                       minCov: Double,
-                       id2seqname: Map[Int, (String, Int)],
-                       splitOri: Boolean,
-                      ): (GeneGraph, Paths, Map[Int, Int], Map[Int, Int], Map[(Int,Int), Int]) = {
+  def findSytenicAnchors(fingertrees: Map[String, FingerTree],
+                         id2seqname: Map[Int, (String, Int)],
+                         minCov: Double,
+                         splitOri: Boolean,
+                         alignments: List[(Int, List[List[Alignment]])]
+                        ): List[(Gene, Gene)] = {
     //set method to filter alignments by given minimum alignment coverage
     val alignment_filter = filterByCoverage(minCov)
-    //set curried method to filter out reads not covered by minimum alignment coverage
-    //val gene_projector = projectGenes(alignment_filter) _
 
-
-    /**
-      * Tail-recursive method to find syntenic anchors based on whole genome alignment. Pseudocode as follows:
-      *
-      * Initialize empty list of 2-tuples representing 'syntenic anchors'
-      * For each genome:
-      * For each alignment of current genome in sorted order:
-      * Get all overlapping genes in query genome based on current alignment coordinates
-      * For each overlapping gene in the query:
-      * Project coordinates of overlapping gene onto target genome
-      * Identify overlapping gene(s) in target genome based on projected coordinates
-      * For each overlapping target gene:
-      * Add (query gene, target gene) to list of syntenic anchors
-      *
-      * @param remaining_alignments List of remaining alignments
-      * @param syntenic_anchors     Accumulating syntenic anchors
-      * @return Syntenic anchors as 2-tuple of gene IDs
-      */
-    @tailrec def findSytenicAnchors(remaining_alignments: List[(Int, List[List[Alignment]])],
-                                    syntenic_anchors: List[(Gene, Gene)],
-                                   ): List[(Gene, Gene)] = {
+    @tailrec def _findSyntenicAnchors(remaining_alignments: List[(Int, List[List[Alignment]])],
+                                      syntenic_anchors: List[(Gene, Gene)]
+                                     ): List[(Gene, Gene)] = {
 
       //check whether there are still alignments to process
       remaining_alignments match {
@@ -72,6 +56,7 @@ object GenomeGeneGraph {
         case current_alignment :: tail => {
           //get sequence ID of the current query
           val query_seqname = id2seqname(current_alignment._1)._1
+          //println("FINDING SA FOR: " + query_seqname)
           //get query's finger tree
           val query_finger_tree = fingertrees(query_seqname)
           //iterate through each alignment and construct ptolemy's gene graph
@@ -80,11 +65,13 @@ object GenomeGeneGraph {
             // same for each alignment interval
             val query_local_genes = alignment_filter(alignment_interval.head.qcoords,
               query_finger_tree.filterOverlaps(alignment_interval.head.qcoords).toList)
+            //println("OVERLAPPING GENES: " + query_local_genes)
             //determine syntenic anchors by identifying overlapping genes between query and ref(s)
             query_local_genes.foldLeft(acc_sa)((interval_acc_sa, query_gene) => {
+              //println("QUERYING GENE" + query_gene)
               //iterate through each alignment in the alignment interval
               alignment_interval.foldLeft(interval_acc_sa)((acc, alignment) => {
-                //println("PROCESSING: " + query_gene)
+                //println("PROCESSING TARGET alignment: " + alignment)
                 //project the coordinates of the current query gene onto the coordinates of the aligned ref sequence
                 val projected_coords = (
                   normalizePosition(alignment.rcoords._1, alignment.rcoords._2, alignment.qcoords._1,
@@ -92,10 +79,11 @@ object GenomeGeneGraph {
                   normalizePosition(alignment.rcoords._1, alignment.rcoords._2, alignment.qcoords._1,
                     alignment.qcoords._2, query_gene._1._2)
                 )
-                //println(projected_coords)
+                //println("PROJECTED COORDS IN TARGET: " + projected_coords)
                 //get overlapping genes with ref
                 val overlapping_genes =
                 alignment_filter(projected_coords, fingertrees(alignment.ref).filterOverlaps(projected_coords).toList)
+                //println("TARGET OVERLAPPING GENES: " + overlapping_genes)
                 //println(overlapping_genes)
                 //no overlapping genes, move on
                 if (overlapping_genes.isEmpty) acc
@@ -107,7 +95,7 @@ object GenomeGeneGraph {
                       "contains the following overlapping genes in " + alignment.ref + " " + overlapping_genes)
                   }
                   //user specified to collapse genes only when they have the same orientation, here they don't
-                  if(splitOri && !overlapping_genes.forall(_._2.ori == query_gene._2.ori)) acc
+                  if (splitOri && !overlapping_genes.forall(_._2.ori == query_gene._2.ori)) acc
                   //add syntenic anchors
                   else overlapping_genes.foldLeft(acc)((a, overlap) => (query_gene._2, overlap._2) :: a)
                 }
@@ -116,19 +104,29 @@ object GenomeGeneGraph {
           })
           //println(sa)
           //continue identifying syntenic anchors
-          findSytenicAnchors(tail, sa)
+          _findSyntenicAnchors(tail, sa)
         }
       }
     }
 
+    _findSyntenicAnchors(alignments, List())
+  }
+
+  /**
+    * Implementation of ptolemy.
+    * Constructs gene graph based on whole genome alignment. There are 3 main steps:
+    * 1). Finding syntenic anchors based gene projections from whole genome alignments
+    * 2). Identifying ortholog clusters based on connected components from syntenic anchor graph
+    * 3). Assignment of new canonical gene ID for each ortholog cluster
+    *
+    * @param fingertrees Map of genome -> fingertree data structure
+    * @return 5-tuple as (GeneGraph, Paths, SA-mappings, Node coverage, Edge coverage). SA-mappings is map(old id ->
+    *         new id) for the new assigned id for each ortholog cluster
+    */
+  def ptolemyGeneGraph(fingertrees: Map[String, FingerTree],
+                       sa_graph: Map[Int, List[Int]],
+                      ): (GeneGraph, Paths, Map[Int, Int], Map[Int, Int], Map[(Int, Int), Int]) = {
     println(timeStamp + "Identifying syntenic anchors")
-    //identify syntenic anchors
-    val syntenic_anchors = findSytenicAnchors(alignments, List())
-    println(timeStamp + "Creating syntenic anchor graph")
-    //create non-directed syntenic anchor graph
-    val sa_graph = {
-      syntenic_anchors.groupBy(_._1).mapValues(_.map(_._2)) ++ syntenic_anchors.groupBy(_._2).mapValues(_.map(_._1))
-    }.map(x => (x._1.id, x._2.map(_.id)))
     println(timeStamp + "--Identifying connected components")
     //fetch ortholog clusters, which are connected components
     val sa_ccs = getConnectedComponents(sa_graph)
@@ -136,17 +134,7 @@ object GenomeGeneGraph {
     val sa_ccs_size = sa_ccs.size
     println(timeStamp + "--Found " + sa_ccs_size + " connected components")
     //define new canonical gene ID for each ortholog cluster/ccs
-    val new_ids = {
-      //iterate through each connected component
-      sa_ccs.foldLeft(List[(Int, Int)]())((gene_alignments, cc) => {
-        //get lowest gene ID
-        val merged_gene_id = cc.min
-        //iterate through each gene and add tuple making old gene id -> new gene id
-        cc.toList.foldLeft(gene_alignments)((local_gene_alignments, gene) => {
-          (gene, merged_gene_id) :: local_gene_alignments
-        })
-      }).toMap
-    }
+    val new_ids = defineCanonicalIDs(sa_ccs)
     //iterate through each fingertree and create gene graph
     val (global_gene_graph, global_genome_paths) = {
       val tmp = fingertrees.toList.foldLeft((empty_gene_graph, empty_paths)) {
@@ -158,7 +146,7 @@ object GenomeGeneGraph {
           }
           //get all genes for current genome, get all edges and update gene graph
           val local_gene_graph = {
-            if(local_genome_paths.size == 1) gene_graph + (local_genome_paths.head.id -> List())
+            if (local_genome_paths.size == 1) gene_graph + (local_genome_paths.head.id -> List())
             else local_genome_paths.sliding(2).foldLeft(gene_graph)((acc_gene_graph, _edge) => {
               //get new node IDs for the current two nodes
               val (node1, node2) = (_edge.head.id, _edge(1).id)
@@ -195,7 +183,7 @@ object GenomeGeneGraph {
             path.foldLeft(node_cov)((cov, gene) => cov + (gene.id -> (cov.getOrElse(gene.id, 0) + 1)))
           //update edge coverage, both forward and reverse
           val updated_edge_coverage = {
-            if(path.size == 1) edge_cov
+            if (path.size == 1) edge_cov
             //iterate through each edge
             else path.sliding(2).foldLeft(edge_cov)((cov, _edge) => {
               //set forward edge
@@ -219,7 +207,8 @@ object GenomeGeneGraph {
           }
           (updated_node_coverage, updated_edge_coverage)
         }
-      }}
+      }
+    }
 
     println(timeStamp + "Constructed gene graph from whole-genome alignments of " + total_nodes + " nodes and " +
       global_gene_graph.toList.map(_._2.size).sum + " edges")

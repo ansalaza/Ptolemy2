@@ -6,7 +6,7 @@ import utilities.AlignmentUtils.Alignment
 import utilities.FileHandling.openFileWithIterator
 import utilities.GFFutils.Gene
 import utilities.GeneGraphUtils._
-import utilities.GeneProjectionUtils.{FingerTree, filterByCoverage, projectGenes, adjustProjectionOri}
+import utilities.GeneProjectionUtils.{FingerTree, filterByCoverage, projectGenes}
 
 /**
   * Author: Alex N. Salazar
@@ -63,20 +63,26 @@ object AlignmentGeneGraph {
         else {
           //iterate through each alignment interval and project genes
           val seq_projections = alignment_interval.map(alignments => {
+            //println(alignments)
             //project onto all alignments
             val projections = alignments.map(alignment =>
               (gene_projector(alignment, fingertrees(alignment.ref)), alignment.ori))
+            //println(projections.map(_._1.map(_.id).map(y => sa_mapping.getOrElse(y, y))))
             //get largest projection
             //TODO: verify all projections with WGS alignments? what about partially-related overlapping seqs?
-            //println(projections)
-            //println(alignments)
-            //println
-            projections.sortBy(x => (x._1.size, if(x._1.isEmpty) Int.MaxValue else x._1.map(_.id).min)).head
+            if (alignments.size > 1) {
+              //println(projections)
+              //println(alignments)
+              //println
+              (List[Gene](), '-')
+            }
+            else projections.head
           }).filter(_._1.nonEmpty)
           //no projections to make
-          if(seq_projections.isEmpty) List[Gene]()
+          if (seq_projections.isEmpty) List[Gene]()
           //adjust orientation of final projection and replace gene id by new id assigned to respective ortholog cluster
-          else adjustProjectionOri(seq_projections).map(x => new Gene(sa_mapping.getOrElse(x.id, x.id), x.ori))
+          else seq_projections.flatMap(x => if (x._2 == '+') x._1 else x._1.reverse.map(_.reverse()))
+            .map(x => new Gene(sa_mapping.getOrElse(x.id, x.id), x.ori))
         }
       }
       //get name and size

@@ -60,54 +60,6 @@ object GeneProjectionUtils {
   }
 
   /**
-    * Function to adjust the order/orientation of a list of 2-tuples (projections and their alignment orientation
-    * onto a sequence) into a final projection onto the original sequence
-    *
-    * @return List[Gene]
-    */
-  def adjustProjectionOri: List[(List[Gene], Char)] => List[Gene] = projections => {
-    /**
-      * Tail-recursive method to adjust orientations of a given list of 2-tuples as (list of genes, corresponding
-      * alignment orientation) into a final projection onto the original sequence
-      *
-      * @param remaining
-      * @param acc
-      * @param projected
-      * @return
-      */
-    def adjust(remaining: List[(List[Gene], Char)],
-               acc: (List[Gene], Char),
-               projected: List[Gene]): List[Gene] = {
-      /**
-        * Function to concatenate a given list of genes onto the final projection, accordingly
-        *
-        * @return List[Gene]
-        */
-      def concatenateProjections(): List[Gene] = {
-        //if reverse, list is already reverse, just reverse internal gene orientations; else reverse order
-        projected ::: (if (acc._2 == '-') acc._1.map(_.reverse) else acc._1.reverse)
-      }
-      //no more projections to process
-      remaining match {
-        case Nil => {
-          assert(acc._1.nonEmpty)
-          //concatenate final projection
-          concatenateProjections()
-        }
-        //projections remaining
-        case (head :: tail) => {
-          //same orientation, update acc by prepending to list
-          if (head._2 == acc._2) adjust(tail, (head._1.foldLeft(acc._1)((b, a) => a :: b), acc._2), projected)
-          //different orientation concatenate accordingly
-          else adjust(tail, head, concatenateProjections)
-        }
-      }
-    }
-
-    adjust(projections.tail, (projections.head._1.reverse, projections.head._2), List())
-  }
-
-  /**
     * Curried funtion to filter out overlapping genes retrieved from the finger tree. By definition, this means
     * comparing the first and last genes and checking the alignment coverage on whether they meet the minimum
     * alignment coverage threshold
