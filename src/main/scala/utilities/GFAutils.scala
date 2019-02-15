@@ -227,7 +227,7 @@ object GFAutils {
       * @param pw_node
       * @param pw_edge
       */
-    def gfa2CSV(gfa: File, pw_node: PrintWriter, pw_edge: PrintWriter): Unit = {
+    def gfa2CSV(gfa: File, coverage: String, pw_node: PrintWriter, pw_edge: PrintWriter): Unit = {
       //output headers
       pw_node.println("Source;Weight")
       pw_edge.println("Source;Target;Weight")
@@ -236,7 +236,7 @@ object GFAutils {
         //split
         val split = line.split("\t")
         //attempt to get coverage
-        val cov = split.find(_.startsWith("FC:i"))
+        val cov = split.find(_.startsWith(coverage))
         //only process link lines
         split.head match {
           //output segment line

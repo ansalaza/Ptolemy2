@@ -16,6 +16,7 @@ object GFAconverter extends GFAconverter {
   case class Config(
                      gfaFile: File = null,
                      outputDir: File = null,
+                     coverage: Char = 'a',
                      formats: String = null)
 
   def main(args: Array[String]) {
@@ -29,11 +30,16 @@ object GFAconverter extends GFAconverter {
       opt[String]('f', "formats") required() action { (x, c) =>
         c.copy(formats = x)
       } text ("Comma-separated string containing format IDs to convert GFA to. Current supported options: 'csv'.")
+      opt[Char]("coverage") required() action { (x, c) =>
+        c.copy(coverage = x)
+      } text ("Use [g]enome coverage or [r]ead coverage as node/edge weights.")
     }
     parser.parse(args, Config()).map { config =>
       //check whether output directory exists. If not, create it.
       verifyDirectory(config.outputDir)
       verifyFile(config.gfaFile)
+      assert(config.coverage == 'g' || config.coverage == 'r', "Specify 'g' for genome coverage or 'r' for read " +
+        "coverage.")
       gfa2Format(config)
     }
   }
@@ -47,7 +53,7 @@ object GFAconverter extends GFAconverter {
           val pw_node = new PrintWriter(config.outputDir + "/" + getFileName(config.gfaFile) + ".nodes.csv")
           val pw_edge = new PrintWriter(config.outputDir + "/" + getFileName(config.gfaFile) + ".edges.csv")
           //convert to CSV format
-          gfa2CSV(config.gfaFile, pw_node, pw_edge)
+          gfa2CSV(config.gfaFile, (if(config.coverage == 'g') "GC:i:" else "RC:i:"), pw_node, pw_edge)
           //close files
           pw_edge.close
           pw_node.close

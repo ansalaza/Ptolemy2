@@ -13,6 +13,11 @@ and has thus far only been tested on genome assemblies and long-read metagenomic
 
 ![](/figures/ptolemy2_overview.png?raw=true)
 
+## Requirements
+Java 1.8 or higher.
+
+Optionally, [minimap2](https://github.com/lh3/minimap2) accessible from you PATH environment.
+
 ## How to run
 
 Given long-read alignments in [PAF-format](https://github.com/lh3/miniasm/blob/master/PAF.md):
