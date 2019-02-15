@@ -42,7 +42,7 @@ object GeneGraph extends GFAwriter {
     val parser = new scopt.OptionParser[Config]("gene-graph") {
       opt[File]('g', "gff-files") required() action { (x, c) =>
         c.copy(gffFile = x)
-      } text ("Tab-delimited file containing sample name and full path to GFF3-formatted file, one per line.")
+      } text ("File containing full path to all corresponding GFF3-formatted files, one per line.")
       opt[String]("feature-types") required() action { (x, c) =>
         c.copy(featureTypes = x)
       } text ("Feature types in the GFF3 file to analyse as a string argument, comma-separated (i.e.the " +
