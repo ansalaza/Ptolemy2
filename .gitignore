@@ -10,3 +10,4 @@ META-INF/
 
 # Ptolemy2 stuff
 src/main/scala/**/play.scala
+src/main/scala/analysis/**

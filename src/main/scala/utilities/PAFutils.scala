@@ -37,7 +37,8 @@ object PAFutils {
                       rname: String,
                       ref_length: Int,
                       rcoords: (Int,Int),
-                      mapq: Int)
+                      mapq: Int,
+                      align_length: Int)
 
 
   /**
@@ -49,8 +50,8 @@ object PAFutils {
     val split = line.split("\t")
     //get orientation column
     val orientation = split(4).head
-    new PAFentry(split.head, split(1).toInt, (split(2).toInt, split(3).toInt),orientation, split(5), split(6).toInt,
-      (split(7).toInt, split(8).toInt), split(11).toInt)
+    new PAFentry(split.head.split("\\s+").head, split(1).toInt, (split(2).toInt, split(3).toInt),orientation,
+      split(5), split(6).toInt, (split(7).toInt, split(8).toInt), split(11).toInt, split(10).toInt)
   }
 
   /**
@@ -161,7 +162,7 @@ object PAFutils {
             val new_coords = (newCoord(interval._1), newCoord(interval._2))
             //create new paf entry of overlapping interval and add to list
             new PAFentry(alignment._2.qname, alignment._2.query_length, interval, alignment._2.ori,
-              alignment._2.rname, alignment._2.ref_length, new_coords, alignment._2.mapq) :: acc
+              alignment._2.rname, alignment._2.ref_length, new_coords, alignment._2.mapq, -1) :: acc
           }
         })
         //add to curated

@@ -5,11 +5,10 @@ import java.io.{File, PrintWriter}
 import utilities.FileHandling.{openFileWithIterator, timeStamp, verifyDirectory, verifyFile}
 import utilities.GFAutils.GFAreader
 import utilities.GFFutils.Gene
-import utilities.NumericalUtils.max
+import utilities.NumericalUtils.min
 import atk.ProgressBar.progress
 
 import scala.annotation.tailrec
-import scala.collection.parallel.ForkJoinTaskSupport
 
 /**
   * Author: Alex N. Salazar
@@ -23,7 +22,7 @@ object ArchitectureMetrics extends GFAreader {
   case class Config(
                      gfaFile: File = null,
                      outputDir: File = null,
-                     minLength: Int = -1,
+                     minLength: Int = 1,
                      exclude: File = null,
                      prefix: String = null)
 
@@ -60,39 +59,22 @@ object ArchitectureMetrics extends GFAreader {
     println(timeStamp + "Processing paths from GFA file")
     //fetch architectures from GFA file as 2-tuple: (architecture/path, (total instances, list of all names))
     val architectures = {
-      //iterate through each line and process only path lines
-      openFileWithIterator(config.gfaFile).foldLeft(List[(String, List[Gene])]())((paths, line) => {
-        //split line
-        val columns = line.split("\t")
-        //check line type
-        columns.head match {
-          //path line
-          case "P" => {
-            //parse line and get path name and path
-            val (name, path, size) = {
-              val tmp = parsePathLine(line)
-              //exclude IDs in path, if any
-              if(exclude.isEmpty) tmp else (tmp._1, tmp._2.filterNot(x => exclude(x.id)), tmp._3)
-            }
-            //only add if the path is not empty or is large enough
-            if (path.isEmpty || (config.minLength != -1 && size < config.minLength)) paths
-            else {
-              //get all different orientations of current path
-              val path_orientations = path.map(_.ori).toSet.toList
-              //check number of orientations
-              val updated_path = path_orientations.size match {
-                //only one orientation, reverse only if its in reverse orientation
-                case 1 => if (path_orientations.head == '+') path else path.reverse.map(_.reverse())
-                //dual orienation, retain smallest path
-                case 2 => getSmallestPath(path)
-              }
-              (name, updated_path) :: paths
-            }
+      //load gfa file, only retain paths, iterate and retain only those that pass thresholds
+      loadGFA(config.gfaFile)._2.toList.foldLeft(List[(String, List[Gene])]()){case(acc, (name, (path,size))) => {
+        if(path.isEmpty || size < config.minLength) acc
+        else {
+          //get all different orientations of current path
+          val path_orientations = path.map(_.ori).toSet.toList
+          //check number of orientations
+          val updated_path = path_orientations.size match {
+            //only one orientation, reverse only if its in reverse orientation
+            case 1 => if (path_orientations.head == '+') path else path.reverse.map(_.reverse())
+            //dual orienation, retain smallest path
+            case 2 => getSmallestPath(path)
           }
-          //ignore all other lines
-          case _ => paths
+          (name, updated_path) :: acc
         }
-      })
+      }}
         //group by architecture
         .groupBy(_._2)
         //sort by most frequent
@@ -122,7 +104,7 @@ object ArchitectureMetrics extends GFAreader {
     /**
       * Function to compute the normalized edit distance of two given architecture IDs. This is defined as:
       * dist = min{ editDist(x,y), editDist(x, y.reverse), editDist(x.reverse, y), editDist(x.reverse, y.reverse }
-      * size = max{ x.size, y.size }
+      * size = min{ x.size, y.size }
       * 1 - ( dist / size)
       *
       * @return Double
@@ -130,8 +112,8 @@ object ArchitectureMetrics extends GFAreader {
     def computeNormEditDist: (Int, Int) => Double = (_x, _y) => {
       //get architectures
       val (x, y) = (architectures(_x)._1.map(_.id), architectures(_y)._1.map(_.id))
-      //get max size
-      val max_size = max(x.size, y.size).toDouble
+      //get min size
+      val min_size = min(x.size, y.size).toDouble
       //no overlap, return max normalized distance
       if(x.toSet.intersect(y.toSet).size == 0) 1.0
       //compute distance for all possible forms
@@ -148,7 +130,7 @@ object ArchitectureMetrics extends GFAreader {
           editDist(x.reverse, y.reverse)
         ).min
         //return normalized edit distance
-        (edit_distance / max_size)
+        (edit_distance / min_size)
       }
     }
 
@@ -181,7 +163,7 @@ object ArchitectureMetrics extends GFAreader {
   }
 
   /**
-    * Function to compare a given path and it's reverse orientation and return the smallest of the to
+    * Function to compare a given path and it's reverse orientation and return the smallest of the two
     *
     * @return List[Gene]
     */

@@ -1,7 +1,8 @@
-package gene_graph
+package misc
 
 import java.io.{File, PrintWriter}
-import utilities.FileHandling.{verifyFile, verifyDirectory, getFileName}
+
+import utilities.FileHandling.{getFileName, verifyDirectory, verifyFile, openFileWithIterator}
 import utilities.GFAutils.GFAconverter
 
 /**
@@ -17,6 +18,7 @@ object GFAconverter extends GFAconverter {
                      gfaFile: File = null,
                      outputDir: File = null,
                      coverage: Char = 'a',
+                     labels: File = null,
                      formats: String = null)
 
   def main(args: Array[String]) {
@@ -33,6 +35,10 @@ object GFAconverter extends GFAconverter {
       opt[Char]("coverage") required() action { (x, c) =>
         c.copy(coverage = x)
       } text ("Use [g]enome coverage or [r]ead coverage as node/edge weights.")
+      note("\nOPTIONAL")
+      opt[File]("labels") action { (x, c) =>
+        c.copy(labels = x)
+      } text ("Tab-delimited file containing: node ID, label.")
     }
     parser.parse(args, Config()).map { config =>
       //check whether output directory exists. If not, create it.
@@ -45,6 +51,14 @@ object GFAconverter extends GFAconverter {
   }
 
   def gfa2Format(config: Config): Unit = {
+    //load labels, if any
+    val labels = {
+      if(config.labels == null) Map.empty[Int,String]
+      else openFileWithIterator(config.labels).toList.map(x =>{
+        val c = x.split("\t")
+        c(0).toInt -> c(1)
+      }).toMap
+    }
     //parse formats
     config.formats.split("\\s+").foreach(format => {
       format.toLowerCase match {
@@ -53,7 +67,7 @@ object GFAconverter extends GFAconverter {
           val pw_node = new PrintWriter(config.outputDir + "/" + getFileName(config.gfaFile) + ".nodes.csv")
           val pw_edge = new PrintWriter(config.outputDir + "/" + getFileName(config.gfaFile) + ".edges.csv")
           //convert to CSV format
-          gfa2CSV(config.gfaFile, (if(config.coverage == 'g') "GC:i:" else "RC:i:"), pw_node, pw_edge)
+          gfa2CSV(config.gfaFile, (if(config.coverage == 'g') "GC:i:" else "RC:i:"), pw_node, pw_edge, labels)
           //close files
           pw_edge.close
           pw_node.close

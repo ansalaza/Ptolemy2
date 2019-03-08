@@ -56,6 +56,97 @@ object GeneGraphUtils extends GFAwriter with GFAreader {
   val empty_edge_coverage = Map.empty[(Int, Int), Int]
 
   /**
+    * Function to compute total nodes in a gene-graph
+    * @return Int
+    */
+  def computeTotalNodes: GeneGraph => Int = graph => {
+    //iterate through each node and it's corresponding edges
+    graph.foldLeft(List[Int]()) { case (all_nodes, (node, edges)) => {
+      //add node to edges, iterate and add to all nodes
+      (node :: edges).foldLeft(all_nodes)((b, a) => a :: b)
+    }
+    }.distinct.size
+  }
+
+  /**
+    * Method to update/construct gene-graph as well as node and edge coverage for a given path. The three are
+    * constructed if only the path is provided. Updates if existing graph, node/edge coverage are provided.
+    * The 'directed' parameter specifies if this is  directed graph or undirected graph.
+    *
+    * @param path
+    * @param directed
+    * @param graph
+    * @param ncov
+    * @param ecov
+    * @return 3-tuple: (graph, node coverage, edge coverage)
+    */
+  def updateGeneGraph(path: List[Gene],
+                      directed: Boolean,
+                      graph: GeneGraph = empty_gene_graph,
+                      ncov: NodeCoverage = empty_node_coverage,
+                      ecov: EdgeCoverage = empty_edge_coverage): (GeneGraph, NodeCoverage, EdgeCoverage) = {
+
+    /**
+      * Function to extract node and edges given a sliding list of genes
+      * @return 3-tuple: (node1, node2, edge)
+      */
+    def extractNodeEdges: List[Gene] => (Int,Int, (Int,Int)) = sliding => {
+      //set nodes
+      val (node1, node2) = (sliding.head.id, sliding(1).id)
+      //set edge
+      val edge = (node1, node2)
+      //return nodes and edge
+      (node1, node2, edge)
+    }
+
+    /**
+      *
+      * @return
+      */
+    def updateNodeCoverage(): NodeCoverage =
+      path.foldLeft(ncov)((cov, gene) => cov + (gene.id -> (cov.getOrElse(gene.id, 0) + 1)))
+
+    /**
+      *
+      * @return
+      */
+    def updateEdgeCoverage(): EdgeCoverage = {
+      if(path.size == 1) ecov
+      else path.sliding(2).foldLeft(ecov)((cov, _edge) => {
+        //get nodes and edge
+        val (node1, node2, edge) = extractNodeEdges(_edge)
+        //update coverage of edge
+        val updated = cov + (edge -> (cov.getOrElse(edge, 0) + 1))
+        //return as is if directed, else swap edge direction
+        if (directed) updated else updated + (edge.swap -> (updated.getOrElse(edge.swap, 0) + 1))
+      })
+    }
+
+    /**
+      *
+      * @return
+      */
+    def updateGraph(): GeneGraph = {
+      if(path.size == 1) graph + (path.head.id -> graph.getOrElse(path.head.id, List[Int]()))
+      else path.sliding(2).foldLeft(graph)((acc, _edge) => {
+        //get nodes and edge
+        val (node1,node2,edge) = extractNodeEdges(_edge)
+        //update graph
+        val updated = acc + (node1 -> (node2 :: acc.getOrElse(node1, List[Int]())))
+        //update accordingly
+        if(directed) updated else updated + (node2 -> (node1 :: acc.getOrElse(node2, List[Int]())))
+      })
+    }
+
+    //update node coverage
+    val updated_node_coverage = updateNodeCoverage()
+    //update edge coverage
+    val (updated_gene_graph, updated_edge_coverage) = (updateGraph(), updateEdgeCoverage())
+    //return updated graphs
+    (updated_gene_graph, updated_node_coverage, updated_edge_coverage)
+  }
+
+  /**
     * Method to identify all connected components in a given graph
     *
     * @param graph Graph as a Map(node ID -> List[Node ID]) (Map[Int, List[Int])
@@ -108,11 +199,8 @@ object GeneGraphUtils extends GFAwriter with GFAreader {
         }
       }
     }
-
-    //get all nodes in the given graph
-    val all_nodes = graph.foldLeft(List[Int]())((list, entry) => list ::: (entry._1 :: entry._2))
     //identify all connected components
-    _getConnectedComponents(all_nodes, List())
+    _getConnectedComponents(graph.keys.toList, List())
   }
 
 
@@ -143,20 +231,27 @@ object GeneGraphUtils extends GFAwriter with GFAreader {
   /**
     * Function to create a non-directional syntenic-anchor graph based on a list of 2-tuples representing syntenic
     * anchors. Returns map where key is gene ID and values is a list of IDs representing neighbouring gene IDs
+    *
     * @return Map[Int, List[Int]
     */
   def createSAgraph: List[(Gene, Gene)] => Map[Int, List[Int]] = syntenic_anchors => {
-    //join map of gene -> edges and edges -> gene
-    (syntenic_anchors.groupBy(_._1).mapValues(_.map(_._2)) ++ syntenic_anchors.groupBy(_._2).mapValues(_.map(_._1)))
-      //create map of INTs
-      .map(x => (x._1.id, x._2.map(_.id)))
+    //iterate through each edge and create map
+    syntenic_anchors.foldLeft(Map[Int, List[Int]]()){case (map, (n1,n2)) => {
+      //get forward edges
+      val forward = map.getOrElse(n1.id, List[Int]())
+      //get reverse edges
+      val reverse = map.getOrElse(n2.id, List[Int]())
+      //update graph
+      map + (n1.id -> (n2.id :: forward)) + (n2.id -> (n1.id :: reverse))
+    }}.mapValues(_.distinct)
   }
 
   /**
     * Define canonical (new) IDs given a list of connected components as list of set of gene IDs.
+    *
     * @return Map[Int,Int]
     */
-  def defineCanonicalIDs: List[Set[Int]] => Map[Int,Int] = sa_ccs => {
+  def defineCanonicalIDs: List[Set[Int]] => Map[Int, Int] = sa_ccs => {
     //iterate through each connected component
     sa_ccs.foldLeft(List[(Int, Int)]())((gene_alignments, cc) => {
       //get lowest gene ID

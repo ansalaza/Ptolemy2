@@ -95,36 +95,15 @@ object AlignmentGeneGraph {
     pw.close()
     //iterate through each path and update gene graph as well as calculate node and edge coverage
     val (g, n, e) = {
-      openFileWithIterator(tmp_file).foldLeft((empty_gene_graph, empty_node_coverage, empty_edge_coverage)) {
-        case ((gene_graph, node_coverage, edge_coverage), line) => {
-          //parse path line
-          val (id, path, size) = parsePathLine(line)
-          //update node coverage
-          val updated_node_coverage =
-            path.foldLeft(node_coverage)((cov, gene) => cov + (gene.id -> (cov.getOrElse(gene.id, 0) + 1)))
-          //update edge coverage
-          val (updated_gene_graph, updated_edge_coverage) = {
-            //skip if only one gene
-            if (path.size == 1) (gene_graph, edge_coverage)
-            //iterate through path as edges, update coverage
-            else path.sliding(2).foldLeft((gene_graph, edge_coverage)) { case ((graph, cov), _edge) => {
-              //set nodes
-              val (node1, node2) = (_edge.head.id, _edge(1).id)
-              //set edge
-              val edge = (node1, node2)
-              //add node2 to current edges of node1
-              (graph + (node1 -> (node2 :: graph.getOrElse(node1, List[Int]()))),
-                //update coverage of edge
-                cov + (edge -> (cov.getOrElse(edge, 0) + 1)))
-            }
-            }
-          }
-          //return updated graphs
-          (updated_gene_graph, updated_node_coverage, updated_edge_coverage)
+      //load as gfa, but retain only paths
+      loadGFA(tmp_file)._2.foldLeft((empty_gene_graph, empty_node_coverage, empty_edge_coverage)) {
+        case ((gene_graph, node_coverage, edge_coverage), (name, (path,size))) => {
+          //update with current path
+          updateGeneGraph(path, true, gene_graph, node_coverage, edge_coverage)
         }
       }
     }
-    (g.mapValues(_.toSet.toList), n, e)
+    (g.mapValues(_.distinct), n, e)
   }
 
 }

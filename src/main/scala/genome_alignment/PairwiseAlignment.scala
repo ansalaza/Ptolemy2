@@ -19,7 +19,8 @@ object PairwiseAlignment {
   case class Config(
                      indexDir: File = null,
                      genomesFile: File = null,
-                     outputDir: File = null
+                     outputDir: File = null,
+                     parameters: String = null,
                    )
 
   def main(args: Array[String]) {
@@ -33,6 +34,9 @@ object PairwiseAlignment {
       opt[File]('o', "output-directory") required() action { (x, c) =>
         c.copy(outputDir = x)
       } text ("Output directory.")
+      opt[String]("parameters") action { (x, c) =>
+        c.copy(parameters = x)
+      } text ("Alignment parameters, as a string")
     }
     parser.parse(args, Config()).map { config =>
       //check whether output directory exists. If not, create it.
@@ -67,7 +71,7 @@ object PairwiseAlignment {
     }
     println(timeStamp + "Found " + assembly2index.size + " genomes")
     println("Performing pairwise genome alignment:")
-    pairwiseAlignment(assembly2index, config.outputDir)
+    pairwiseAlignment(assembly2index, config.outputDir, config.parameters)
     println("Successfully completed!")
   }
 

@@ -91,7 +91,7 @@ object AlignmentMetrics {
     pw_brk.println("ReadName\tRef\tPosition")
     //create output file for multimapping summary
     val pw_multi = new PrintWriter(config.outputDir + "/" + getFileName(config.pafFile) + ".multimapping.txt")
-    pw_multi.println("ReadName\tOstart\tOend\tRstart\tRend\tOsize")
+    pw_multi.println("ReadName\tOstart\tOend\tRef\tRstart\tRend\tOsize")
     //create output file for multimapping summary
     val pw_unmapped = new PrintWriter(config.outputDir + "/" + getFileName(config.pafFile) + ".unmapped_reads.txt")
     pw_unmapped.println("ReadName\tSize")
@@ -102,8 +102,6 @@ object AlignmentMetrics {
     val mapped_reads = curated_alignments.foldLeft(HashSet[Int]()){case(observed,(read_id, alignments)) => {
       //get read name
       val (read_name, read_length) = readid2name(read_id)
-      //check if there are multiple alignments
-      val is_multi = alignments.size > 1
       //iterate through each read and output alignment
       alignments.foreach(alignment => {
         //get size of alignment, in the reference

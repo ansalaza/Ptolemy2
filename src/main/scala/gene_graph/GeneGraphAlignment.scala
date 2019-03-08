@@ -20,7 +20,7 @@ import utilities.IntervalUtils.longestOverlappingIntervals
   *
   * Description:
   */
-object GeneGraph extends GFAwriter {
+object GeneGraphAlignment extends GFAwriter {
 
   case class Config(
                      genomeAlignments: File = null,
@@ -31,10 +31,12 @@ object GeneGraph extends GFAwriter {
                      minMultiMap: Int = 100,
                      minDist: Int = 100,
                      minAlignmentCov: Double = 0.5,
-                     featureTypes: String = null,
+                     featureType: String = null,
                      prefix: String = null,
                      nameTag: String = null,
-                     excludeFile: File = null,
+                     idTag: String = "protein_id=",
+                     excludeSeqFile: File = null,
+                     excludeRegionFile: File = null,
                      splitOri: Boolean = false,
                      showWarning: Boolean = false)
 
@@ -43,13 +45,6 @@ object GeneGraph extends GFAwriter {
       opt[File]('g', "gff-files") required() action { (x, c) =>
         c.copy(gffFile = x)
       } text ("File containing full path to all corresponding GFF3-formatted files, one per line.")
-      opt[String]("feature-types") required() action { (x, c) =>
-        c.copy(featureTypes = x)
-      } text ("Feature types in the GFF3 file to analyse as a string argument, comma-separated (i.e.the " +
-        "string: 'gene,tRNA)")
-      opt[String]("name-tag") required() action { (x, c) =>
-        c.copy(nameTag = x)
-      } text ("Name tag storing gene name description in the attributes column (i.e. the string: 'product=')")
       opt[File]('w', "wg-alignments") action { (x, c) =>
         c.copy(genomeAlignments = x)
       } text ("Whole genome alignments in PAF-format.")
@@ -62,10 +57,27 @@ object GeneGraph extends GFAwriter {
       opt[String]("prefix") required() action { (x, c) =>
         c.copy(prefix = x)
       } text ("Prefix for output file.")
-      note("\nOPTIONAL\n")
+      note("\nOPTIONAL")
+      note("\nINPUT")
+      opt[String]("feature-type") action { (x, c) =>
+        c.copy(featureType = x)
+      } text ("Feature types in the GFF3 file to analyse (default is 'CDS').")
+      opt[String]("name-tag") action { (x, c) =>
+        c.copy(nameTag = x)
+      } text ("Name tag storing gene name description in the attributes column (default is 'product=')")
+      opt[String]("id-tag") action { (x, c) =>
+        c.copy(idTag = x)
+      } text ("Name tag storing gene ID (default is 'protein_id=')")
+      opt[File]("exclude-sequence") action { (x, c) =>
+        c.copy(excludeSeqFile = x)
+      } text ("Exclude sequence with the same IDs in the provided alignment(s) file (one per line).")
+      opt[File]("exclude-regions") action { (x, c) =>
+        c.copy(excludeRegionFile = x)
+      } text ("Exclude reference (sub-)regions (one per line).")
+      note("\nALGORITHM")
       opt[Unit]("split-ori") action { (x,c) =>
         c.copy(splitOri = true)
-      } text ("Do not collapse orthologs unless they are in the same orientation.")
+      } text ("Do not collapse homologous genes unless they are in the same orientation.")
       opt[Int]("min-mapq") action { (x, c) =>
         c.copy(minMapq = x)
       } text ("Process only alignments with at least this MAPQ (default is 10).")
@@ -78,9 +90,6 @@ object GeneGraph extends GFAwriter {
       opt[Double]("alignment-coverage") action { (x, c) =>
         c.copy(minAlignmentCov = x)
       } text ("Mininum alignment coverage for a genes to be processed (default is 0.75).")
-      opt[File]("exclude-sequence") action { (x, c) =>
-        c.copy(excludeFile = x)
-      } text ("Exclude sequence with the same IDs in the provided file (one per line).")
       opt[Unit]("show-warning") action { (x, c) =>
         c.copy(showWarning = true)
       } text ("Output warnings (turned-off by default).")
@@ -100,15 +109,12 @@ object GeneGraph extends GFAwriter {
 
   def constructGeneGraph(config: Config): Unit = {
     /* START: SET CURRIED METHODS/FUNCTIONS AND MISCELLANEOUS INFORMATION */
-    //get feature types in a set
-    val feature_types = config.featureTypes.replaceAll("\\s+", "").split(",").toSet
-    println(timeStamp + "Found the following feature types: " + feature_types.mkString(","))
     //set curried multi-gff3 parser
-    val parseGFFfiles = parseMultiGFF2FingerTree(feature_types, config.nameTag) _
+    val parseGFFfiles = parseMultiGFF2FingerTree(Set(config.featureType), config.nameTag, config.idTag) _
     /* END: SET CURRIED METHODS/FUNCTIONS AND MISCELLANEOUS INFORMATION */
 
     /* START: PARSE GFF3-FORMATTED FILE INTO FINGER TREE DATA STRUCTURES */
-    val (global_fingertree, global_description, global_origin) = {
+    val (global_fingertree, global_description) = {
       //first iterate through each gff and verify file is valid
       val gff_files = openFileWithIterator(config.gffFile).toList.map(line => {
         //make file
@@ -120,8 +126,8 @@ object GeneGraph extends GFAwriter {
       })
       parseGFFfiles(gff_files, config.showWarning)
     }
-    println(timeStamp + "Found " + global_fingertree.size + " sequences with a total of " +
-      global_description.size + " genes")
+    println(timeStamp + "Found " + global_fingertree.size + " sequences with a total of " + global_description.size +
+      " genes")
     /* END: PARSE GFF3-FORMATTED FILE INTO FINGER TREE DATA STRUCTURES */
 
     /**
@@ -165,10 +171,7 @@ object GeneGraph extends GFAwriter {
     pw.close()
     //create id file
     val pw2 = new PrintWriter(config.outputDir + "/" + config.prefix + ".node_ids.txt")
-    global_description.toList.sortBy(_._1).foreach { case (node, (description, ori, (start, end))) => {
-      pw2.println(node + "\t" + global_origin(node) + "\t" + (start+1) + "\t" + end + "\t" + ori + "\t" + description)
-    }
-    }
+    global_description.toList.sortBy(_._1).foreach(x => pw2.println(x._2.toString()))
     pw2.close
     println(timeStamp + "Successfully completed!")
 
@@ -217,13 +220,13 @@ object GeneGraph extends GFAwriter {
         val tmp = curateAlignmentsPerSeq(config.genomeAlignments, config.minMapq, config.minMultiMap, config.minDist,
           initial_id, _id2genome.toMap)
         //if no exclusive file found, move on
-        if (config.excludeFile == null) tmp
+        if (config.excludeSeqFile == null) tmp
         //exclude specified sequences
         else {
           //verify file
-          verifyFile(config.excludeFile)
+          verifyFile(config.excludeSeqFile)
           //get all read ids to exclude
-          val excluded_seqs = openFileWithIterator(config.excludeFile).toList.toSet
+          val excluded_seqs = openFileWithIterator(config.excludeSeqFile).toList.toSet
           println(timeStamp + "Found " + excluded_seqs.size + " sequences to exclude")
           //get corresponding ids for reads to exclude
           val excluded_ids = tmp._1.toList.foldLeft(List[Int]())((ids, read) => {
@@ -270,12 +273,12 @@ object GeneGraph extends GFAwriter {
         //curate alignments
         val tmp = curateAlignmentsPerSeq(config.readAlignments, config.minMapq, config.minMultiMap, config.minDist)
         //if no exclusive file found, move on
-        if (config.excludeFile == null) tmp
+        if (config.excludeSeqFile == null) tmp
         else {
           //verify file
-          verifyFile(config.excludeFile)
+          verifyFile(config.excludeSeqFile)
           //get all read ids to exclude
-          val excluded_reads = openFileWithIterator(config.excludeFile).toList.toSet
+          val excluded_reads = openFileWithIterator(config.excludeSeqFile).toList.toSet
           println(timeStamp + "Found " + excluded_reads.size + " reads to exclude")
           //get corresponding ids for reads to exclude
           val excluded_ids = tmp._1.toList.foldLeft(List[Int]())((ids, read) => {

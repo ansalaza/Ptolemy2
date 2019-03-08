@@ -2,7 +2,7 @@ package utilities
 
 import java.io.{File, PrintWriter}
 
-import utilities.FileHandling.{getFileExtension, openFileWithIterator}
+import utilities.FileHandling.{getFileExtension, getFileName, openFileWithIterator, timeStamp}
 
 import scala.annotation.tailrec
 
@@ -198,6 +198,155 @@ object SequenceFormatUtils {
       case `fastq_type` => fetchSubSeqFastq()
       case _ => assert(false, "Unrecognized file type: " + seqs.getName)
     }
+  }
+
+  def convertFromGenBank(file: File, outputdir: File): Unit = {
+
+    def isDNA: Char => Boolean = nt => List('A', 'C', 'T', 'G', 'N').exists(_ == nt.toUpper)
+
+    /**
+      * Function to parse coordinate line of a genbank feature
+      *
+      * @return 2-tuple: ((Int,Int), Char)
+      */
+    def parseCoords: String => ((Int, Int), Char) = str => {
+      //get string representing coordinates and orientation
+      val (line, ori) = {
+        //positive strand
+        if (!str.contains("complement") && !str.contains("join")) (str, '+')
+        //negative strand
+        else {
+          //modify string in case there is a 'join' segment
+          val tmp = {
+            if(!str.contains("join")) str
+            else str.replaceAll("join", "").drop(1).dropRight(1).split(",").head
+          }
+          if(!tmp.contains("complement")) (tmp, '+')
+          else (tmp.replaceAll("complement", "").drop(1).dropRight(1), '-')
+        }
+      }
+      //get string coordinates
+      val coords = line.splitAt(line.indexOf(".."))
+      //return as ints
+      ((coords._1.toInt, coords._2.drop(2).toInt), ori)
+    }
+
+    //set fasta output
+    val pw_fasta = new PrintWriter(outputdir + "/" + getFileName(file) + ".fasta")
+    val pw_proteins = new PrintWriter(outputdir + "/" + getFileName(file) + ".proteins.fasta")
+    //set gff output
+    val pw_gff = new PrintWriter(outputdir + "/" + getFileName(file) + ".gff")
+
+    //mutable variables for seqname and seq length
+    var seqname = ""
+    var length = 0
+    var translation = StringBuilder.newBuilder
+    var isCDS = false
+
+    //set iterator
+    val iterator = openFileWithIterator(file)
+
+    /**
+      * Function to output CDS (gene) to GFF format given the coord line, the product line, and the corresponding ID
+      *
+      * @return Unit
+      */
+    def outputGene: (List[String], Int) => Unit = (lines, id) => {
+      //sanity check
+      assert(lines.size == 3, "Expected 3 CDS entry lines: " + lines)
+      //get coordinates and orientation
+      val (coords, ori) = parseCoords(lines.last)
+      //get gene product description
+      val description = lines.head.replaceAll("/product=", "").drop(1).dropRight(1)
+      //get protein sequence
+      val protein_seq = lines(1).replace("/translation=", "").drop(1).dropRight(1)
+      pw_gff.println(List(seqname, "", "CDS", coords._1, coords._2, "", ori, "",
+        "protein_id=" + (seqname + "_" + id) + ";product=" + description).mkString("\t"))
+      pw_proteins.println(">" + seqname + "_" + id)
+      pw_proteins.println(protein_seq)
+    }
+
+    def parseGenBank(acc: List[String], id: Int): String = {
+      //end of file
+      if (iterator.isEmpty) {
+        //no more sequences to process
+        if (acc.isEmpty) "done"
+        //one more sequence to process
+        else {
+          outputGene(acc, id)
+          "done"
+        }
+      }
+      //more lines to process
+      else {
+        //get next line
+        val entry = iterator.next().split("\\s+").filter(_.nonEmpty)
+        //match line type accordingly
+        entry.head match {
+          //start sequence information
+          case "LOCUS" => {
+            //set sequence name
+            seqname = entry(1)
+            //se sequenc length
+            length = entry(2).toInt
+            //output genome fast info
+            pw_fasta.println(">" + seqname)
+            println(timeStamp + "Processing " + seqname + " of length " + length)
+            parseGenBank(acc, id)
+          }
+          case "CDS" => {
+            isCDS = true
+            //no existing CDS, add as new entry
+            if (acc.isEmpty) parseGenBank(entry(1) :: acc, id)
+            //start of new CDS, end of old CDS
+            else {
+              //output old CDS
+              outputGene(acc, id)
+              //move on with new CDS
+              parseGenBank(List(entry(1)), id + 1)
+            }
+          }
+          case _ => {
+            //genome fasta line
+            if (entry.head.forall(_.isDigit) && entry.drop(1).forall(_.forall(isDNA(_)))) {
+              pw_fasta.println(entry.drop(1).mkString(""))
+              parseGenBank(acc, id)
+            }
+            //start of translation info for CDS
+            else if (isCDS && entry.head.startsWith("/translation")) {
+              //set start of translation flag
+              assert(translation.isEmpty, "Expected translation sequence to be empty: " + translation.mkString)
+              translation.append(entry.head)
+              parseGenBank(acc, id)
+            }
+            //start of product info for CDS and end of translation
+            else if (isCDS && entry.head.startsWith("/product")){
+              assert(translation.nonEmpty, "Expected translation sequence to exist: " + translation.mkString)
+              //set protein seq
+              val protein_seq = translation.mkString
+              //set translation
+              translation = StringBuilder.newBuilder
+              //set end of CDS
+              isCDS = false
+              parseGenBank(entry.mkString(" ") :: (protein_seq :: acc), id)
+            }
+            else if(isCDS && translation.nonEmpty) {
+              translation.append(entry.head)
+              parseGenBank(acc, id)
+            }
+            //misc info
+            else parseGenBank(acc, id)
+          }
+
+        }
+      }
+    }
+
+    parseGenBank(List(), 0)
+    pw_gff.close
+    pw_fasta.close()
+    pw_proteins.close
+
   }
 
 }

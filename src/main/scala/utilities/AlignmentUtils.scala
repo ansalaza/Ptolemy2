@@ -101,7 +101,7 @@ object AlignmentUtils {
       *
       * @return String
       */
-    def buildReport(intersection: (Int, Int), read_coords: (Int, Int), ref_coords: (Int, Int),
+    def buildReport(intersection: (Int, Int), read_coords: (Int, Int), ref_coords: (Int, Int), ref: String,
                     forward: Boolean, size: Int): String = {
       /**
         * Get true interval of based on alignment orientation given the size of the overlap
@@ -127,7 +127,8 @@ object AlignmentUtils {
         //contains
         else (ref_coords._1 + intersection._1 - 1, ref_coords._2 - (ref_coords._2 - intersection._2))
       }
-      name + "\t" + intersection._1 + "\t" + intersection._2 + "\t" + intersect_ref._1 + "\t" + intersect_ref._2 + "\t" + size
+      name + "\t" + intersection._1 + "\t" + intersection._2 + "\t" + ref + "\t" + intersect_ref._1 + "\t" +
+        intersect_ref._2 + "\t" + size
     }
     //iterate through each alignment as subj
     alignments.foldLeft(List[String]())((overlaps, subj) => {
@@ -139,7 +140,7 @@ object AlignmentUtils {
           val intersection = computeIntersection(subj.qcoords, target.qcoords)
           assert(intersection.nonEmpty, "Expected overlapping alignments for read " + name)
           //build string report and add
-          buildReport(intersection.get, subj.qcoords, subj.rcoords, subj.isForward(),
+          buildReport(intersection.get, subj.qcoords, subj.rcoords, subj.ref, subj.isForward(),
             intervalSize(intersection.get)) :: local_overlaps
         }
         //subj are the same alignment or there is no overlap

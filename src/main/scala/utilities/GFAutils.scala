@@ -153,6 +153,10 @@ object GFAutils {
 
   trait GFAreader {
 
+    /**
+      * Funtion to parse path column into a list of genes
+      * @return
+      */
     def parsePath: String => List[Gene] = line => {
       line.split(",").toList.map(x => {
         val (node, ori) = x.partition(_.isDigit)
@@ -162,28 +166,12 @@ object GFAutils {
     }
 
     /**
-      * Function to parse a path line from a GFA file.
-      * @return 2-tuple as (Paths, optional size)
-      */
-    def parsePathLine: String => (String, List[Gene], Int) = line => {
-      //split line
-      val split = line.split("\t")
-      assert(split.size >= 2, "Unexpected number of columns in line: " + line)
-      //get path
-      val path = if(split(2).isEmpty) List[Gene]() else parsePath(split(2))
-      //get size, if available
-      //val size = if(split.size >= 4) None else Option(split(3).toInt)
-      //return path and optional size
-      (split(1), path, split(3).toInt)
-    }
-
-    /**
       * Function to load GFA file given a file object
       * @return 2-tuple (GeneGraph and List of paths)
       */
-    def loadGFA: File => (GeneGraph, Map[String, List[Gene]]) = file => {
+    def loadGFA: File => (GeneGraph, Map[String, (List[Gene], Int)]) = file => {
       val (all_nodes, all_edges, all_paths) = {
-        openFileWithIterator(file).foldLeft((List[Int](), List[(Int, Int)](), List[(String, List[Gene])]())) {
+        openFileWithIterator(file).foldLeft((List[Int](), List[(Int, Int)](), List[(String, (List[Gene], Int))]())) {
           case ((nodes, edges, paths), line) => {
             val columns = line.split("\t")
             columns.head match {
@@ -193,8 +181,10 @@ object GFAutils {
                 (nodes, (node1, node2) :: edges, paths)
               }
               case "P" => {
-                val (id, path, size) = parsePathLine(columns(2))
-                (nodes, edges, (id, path) :: paths)
+                assert(columns.size == 4, "Unexpected number of columns in line: " + line)
+                val (id, size) = (columns(1), columns.last.toInt)
+                val path = parsePath(columns(2))
+                (nodes, edges, (id, (path, size)) :: paths)
               }
               case _ => (nodes, edges, paths)
             }
@@ -208,6 +198,8 @@ object GFAutils {
         //update graph
         (graph + (edge._1 -> (edge._2 :: graph(edge._1))))
       })
+      //sanity check that all nodes are accounted for
+      all_nodes.foreach(node => assert(graph.contains(node), "Expected node " + node + " in graph"))
       //sanity check that there are bi-direction edges
       graph.toList.foreach{case (node, edges) => {
         edges.foreach(edge => {
@@ -227,9 +219,13 @@ object GFAutils {
       * @param pw_node
       * @param pw_edge
       */
-    def gfa2CSV(gfa: File, coverage: String, pw_node: PrintWriter, pw_edge: PrintWriter): Unit = {
+    def gfa2CSV(gfa: File,
+                coverage: String,
+                pw_node: PrintWriter,
+                pw_edge: PrintWriter,
+                labels: Map[Int,String] = Map()): Unit = {
       //output headers
-      pw_node.println("Source;Weight")
+      pw_node.println("Id;Weight" + (if(labels.isEmpty) "" else ";Label"))
       pw_edge.println("Source;Target;Weight")
       //iterate through each line in gfa file
       openFileWithIterator(gfa).toList.foreach(line => {
@@ -240,7 +236,8 @@ object GFAutils {
         //only process link lines
         split.head match {
           //output segment line
-          case "S" => pw_node.println(split(1) + (if (cov.isEmpty) "" else ";" + cov.get.filter(_.isDigit)))
+          case "S" => pw_node.println(split(1) + (if (cov.isEmpty) "" else ";" + cov.get.filter(_.isDigit)) +
+            (if(labels.isEmpty) "" else (";\"" + labels.getOrElse(split(1).toInt, "None")) + "\""))
           //output link line
           case "L" => {
             //output information in CSV-format

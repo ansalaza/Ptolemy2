@@ -54,7 +54,7 @@ object Minimap2Utils {
     *
     * @param assembly2index List of index files as File objects
     */
-  def pairwiseAlignment(assembly2index: List[(File,File)], outputdir: File): Unit = {
+  def pairwiseAlignment(assembly2index: List[(File,File)], outputdir: File, parameters: String): Unit = {
     //create output file for storing alignments
     val pw = new PrintWriter(outputdir + "/pairwise_alignments.paf")
 
@@ -66,7 +66,7 @@ object Minimap2Utils {
       * @return
       */
     def constructAlignmentCommand: (File, List[File]) => Seq[String] = (subj, targets) => {
-      Seq("minimap2", "-c") ++ Seq(subj.getAbsolutePath) ++ targets.map(_.getAbsolutePath)
+      Seq("minimap2", parameters, "-c") ++ Seq(subj.getAbsolutePath) ++ targets.map(_.getAbsolutePath)
     }
 
     /**

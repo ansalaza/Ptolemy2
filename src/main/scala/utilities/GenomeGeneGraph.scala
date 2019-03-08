@@ -136,83 +136,30 @@ object GenomeGeneGraph {
     //define new canonical gene ID for each ortholog cluster/ccs
     val new_ids = defineCanonicalIDs(sa_ccs)
     //iterate through each fingertree and create gene graph
-    val (global_gene_graph, global_genome_paths) = {
-      val tmp = fingertrees.toList.foldLeft((empty_gene_graph, empty_paths)) {
-        case ((gene_graph, genome_paths), (genome, genes)) => {
-          //get current genome path using new gene ids
-          val local_genome_paths = {
-            //sort by gene id, get new gene ids, DO NOT collapse overlapping cases (for now)
-            genes.toList.sortBy(_._2.id).map(x => new Gene(new_ids.getOrElse(x._2.id, x._2.id), '+'))
-          }
-          //get all genes for current genome, get all edges and update gene graph
-          val local_gene_graph = {
-            if (local_genome_paths.size == 1) gene_graph + (local_genome_paths.head.id -> List())
-            else local_genome_paths.sliding(2).foldLeft(gene_graph)((acc_gene_graph, _edge) => {
-              //get new node IDs for the current two nodes
-              val (node1, node2) = (_edge.head.id, _edge(1).id)
-              //update node1's current edges
-              val node1_current_edges = node2 :: acc_gene_graph.getOrElse(node1, List[Int]())
-              //update node2's current edges
-              val node2_current_edges = node1 :: acc_gene_graph.getOrElse(node2, List[Int]())
-              //update map
-              (acc_gene_graph + (node1 -> node1_current_edges)) + (node2 -> node2_current_edges)
-            })
-          }
-          //return updated gene graph and update genome paths
-          (local_gene_graph, genome_paths + (genome -> local_genome_paths))
-        }
+    val global_paths = {
+      fingertrees.toList.foldLeft(empty_paths) { case (genome_paths, (genome, genes)) => {
+        //update genome paths
+        genome_paths + (
+          //sort by gene id, get new gene ids, DO NOT collapse overlapping cases (for now)
+          genome -> genes.toList.sortBy(_._2.id).map(x => new Gene(new_ids.getOrElse(x._2.id, x._2.id), '+')))
       }
-      (tmp._1.mapValues(_.toSet.toList), tmp._2)
+      }.mapValues(_.toSet.toList)
     }
+    //construct gene graph along with node and edge coverage
+    val (global_gene_graph, node_coverage, edge_coverage) = {
+      //iterate through each path and update accordingly
+      val tmp = global_paths.foldLeft((empty_gene_graph, empty_node_coverage, empty_edge_coverage)){
+        case ((graph, ncov, ecov), (genome, path)) => updateGeneGraph(path, false, graph, ncov, ecov)
+      }
+      (tmp._1.mapValues(_.distinct), tmp._2, tmp._3)
+    }
+
     //total gene graph nodes
-    val total_nodes = {
-      //iterate through each node and it's corresponding edges
-      global_gene_graph.foldLeft(List[Int]()) { case (all_nodes, (node, edges)) => {
-        //add node to edges, iterate and add to all nodes
-        (node :: edges).foldLeft(all_nodes)((b, a) => a :: b)
-      }
-      }.toSet.size
-    }
-    //compute node and edge coverage
-    val (node_coverage, edge_coverage) = {
-      //iterate through each genome
-      global_genome_paths.toList.foldLeft((Map[Int, Int](), Map[(Int, Int), Int]())) {
-        case ((node_cov, edge_cov), (genome, path)) => {
-          //update node coverage
-          val updated_node_coverage =
-            path.foldLeft(node_cov)((cov, gene) => cov + (gene.id -> (cov.getOrElse(gene.id, 0) + 1)))
-          //update edge coverage, both forward and reverse
-          val updated_edge_coverage = {
-            if (path.size == 1) edge_cov
-            //iterate through each edge
-            else path.sliding(2).foldLeft(edge_cov)((cov, _edge) => {
-              //set forward edge
-              val forward = (_edge.head.id, _edge(1).id)
-              //self edge
-              if (forward._1 == forward._2) {
-                //updated forward coverage +2
-                val updated_cov = cov.getOrElse(forward, 0) + 2
-                cov + (forward -> updated_cov)
-              } else {
-                //updated forward coverage
-                val updated_forward_cov = cov.getOrElse(forward, 0) + 1
-                //set reverse edge
-                val reverse = forward.swap
-                //updated reverse edge
-                val updated_reverse_cov = cov.getOrElse(reverse, 0) + 1
-                //update coverage
-                (cov + (forward -> updated_forward_cov)) + (reverse -> updated_reverse_cov)
-              }
-            })
-          }
-          (updated_node_coverage, updated_edge_coverage)
-        }
-      }
-    }
+    val total_nodes = computeTotalNodes(global_gene_graph)
 
     println(timeStamp + "Constructed gene graph from whole-genome alignments of " + total_nodes + " nodes and " +
       global_gene_graph.toList.map(_._2.size).sum + " edges")
     //return global gene graph
-    (global_gene_graph, global_genome_paths, new_ids, node_coverage, edge_coverage)
+    (global_gene_graph, global_paths, new_ids, node_coverage, edge_coverage)
   }
 }
