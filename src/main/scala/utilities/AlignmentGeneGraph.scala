@@ -3,10 +3,10 @@ package utilities
 import java.io.{File, PrintWriter}
 
 import utilities.AlignmentUtils.Alignment
-import utilities.FileHandling.openFileWithIterator
 import utilities.GFFutils.Gene
 import utilities.GeneGraphUtils._
 import utilities.GeneProjectionUtils.{FingerTree, filterByCoverage, projectGenes}
+import utilities.GFAutils.makeGenePathLine
 
 /**
   * Author: Alex N. Salazar
@@ -88,7 +88,7 @@ object AlignmentGeneGraph {
       //get name and size
       val (name, size) = id2seqname(read)
       //create and output path line
-      pw.println(makePathLine(name, architecture, size))
+      pw.println(makeGenePathLine(name, architecture, size))
     }
     }
     //close tmp file

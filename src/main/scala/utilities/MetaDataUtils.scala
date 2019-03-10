@@ -47,4 +47,12 @@ object MetaDataUtils {
     }).groupBy(_._1).mapValues(_.map(_._2).distinct)
   }
 
+  def loadGeneFamilies: File => Map[Int, List[Int]] = file => {
+    openFileWithIterator(file).foldLeft(List[(Int,Int)]())((acc, line) => {
+      val columns = line.split("\t")
+      assert(columns.size == 2, "Found multiple columns in line: " + columns.toList)
+      (columns.head.toInt, columns(1).toInt) :: acc
+    }).groupBy(_._2).mapValues(_.map(_._1).toList.distinct)
+  }
+
 }

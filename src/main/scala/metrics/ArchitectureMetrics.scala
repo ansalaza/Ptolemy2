@@ -3,7 +3,7 @@ package metrics
 import java.io.{File, PrintWriter}
 
 import utilities.FileHandling.{openFileWithIterator, timeStamp, verifyDirectory, verifyFile}
-import utilities.GFAutils.GFAreader
+import utilities.GFAutils.GeneGraphReader
 import utilities.GFFutils.Gene
 import utilities.NumericalUtils.min
 import atk.ProgressBar.progress
@@ -17,7 +17,7 @@ import scala.annotation.tailrec
   *
   * Description:
   */
-object ArchitectureMetrics extends GFAreader {
+object ArchitectureMetrics extends GeneGraphReader {
 
   case class Config(
                      gfaFile: File = null,

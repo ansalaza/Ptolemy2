@@ -2,12 +2,13 @@ package gene_graph
 
 import java.io.{File, PrintWriter}
 
-import utilities.FileHandling.{openFileWithIterator, timeStamp, verifyDirectory, verifyFile, getFileExtension}
+import utilities.FileHandling.{openFileWithIterator, timeStamp, verifyDirectory, verifyFile}
 import utilities.GFFutils.Gene
 import utilities.GeneGraphUtils.{createSAgraph, defineCanonicalIDs, getConnectedComponents, _}
 import utilities.PAFutils.toPAFentry
 import utilities.MetaDataUtils.loadDescriptions
 import utilities.BlastUtils.toBlast
+import utilities.GFAutils.GeneGraphWriter
 /**
   * Author: Alex N. Salazar
   * Created on 16-2-2019
@@ -15,7 +16,7 @@ import utilities.BlastUtils.toBlast
   *
   * Description:
   */
-object GeneGraphFamily {
+object GeneGraphFamily extends GeneGraphWriter {
 
   case class Config(
                      alignments: File = null,
@@ -172,7 +173,7 @@ object GeneGraphFamily {
     //set gene families
     val gene_families = defineCanonicalIDs(ccs)
     //set output file
-    val pw = new PrintWriter(config.outputDir + "/" + config.prefix + ".txt")
+    val pw = new PrintWriter(config.outputDir + "/" + config.prefix + ".gene_families.txt")
     //iterate through each gene family mapping and output
     gene_families.foreach { case (x, y) => pw.println(x + "\t" + y) }
     pw.close
@@ -181,13 +182,13 @@ object GeneGraphFamily {
     val genome_paths = {
       descriptions.values.groupBy(_.ref).mapValues(_.toList.sortBy(x => (x.start, x.end))
         .map(x => new Gene(gene_families.getOrElse(x.id, x.id), x.ori)))
-    }
+    }.mapValues(x => (x, -1))
     println(timeStamp + "--Constructed architectures for " + genome_paths.size + " sequences")
     println(timeStamp + "Constructing gene-graph with coverage statistics")
     //construct gene graph along with node and edge coverage
     val (graph, ncov, ecov) = {
       val tmp = genome_paths.foldLeft((empty_gene_graph, empty_node_coverage, empty_edge_coverage)) {
-        case ((_graph, _ncov, _ecov), (seq, path)) => updateGeneGraph(path, false, _graph, _ncov, _ecov)
+        case ((_graph, _ncov, _ecov), (seq, (path,size))) => updateGeneGraph(path, false, _graph, _ncov, _ecov)
       }
       (tmp._1.mapValues(_.distinct), tmp._2, tmp._3)
     }

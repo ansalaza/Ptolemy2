@@ -141,15 +141,15 @@ object GenomeGeneGraph {
         //update genome paths
         genome_paths + (
           //sort by gene id, get new gene ids, DO NOT collapse overlapping cases (for now)
-          genome -> genes.toList.sortBy(_._2.id).map(x => new Gene(new_ids.getOrElse(x._2.id, x._2.id), '+')))
+          genome -> (genes.toList.sortBy(_._2.id).map(x => new Gene(new_ids.getOrElse(x._2.id, x._2.id), '+')), -1))
       }
-      }.mapValues(_.toSet.toList)
+      }.mapValues(x => (x._1.distinct, x._2))
     }
     //construct gene graph along with node and edge coverage
     val (global_gene_graph, node_coverage, edge_coverage) = {
       //iterate through each path and update accordingly
       val tmp = global_paths.foldLeft((empty_gene_graph, empty_node_coverage, empty_edge_coverage)){
-        case ((graph, ncov, ecov), (genome, path)) => updateGeneGraph(path, false, graph, ncov, ecov)
+        case ((graph, ncov, ecov), (genome, (path,size))) => updateGeneGraph(path, false, graph, ncov, ecov)
       }
       (tmp._1.mapValues(_.distinct), tmp._2, tmp._3)
     }

@@ -3,7 +3,7 @@ package misc
 import java.io.{File, PrintWriter}
 
 import utilities.FileHandling.{getFileName, verifyDirectory, verifyFile, openFileWithIterator}
-import utilities.GFAutils.GFAconverter
+import utilities.GFAutils.GeneGraphConverter
 
 /**
   * Author: Alex N. Salazar
@@ -12,7 +12,7 @@ import utilities.GFAutils.GFAconverter
   *
   * Description:
   */
-object GFAconverter extends GFAconverter {
+object GFAconverter extends GeneGraphConverter {
 
   case class Config(
                      gfaFile: File = null,

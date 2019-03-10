@@ -4,7 +4,8 @@ import java.io.{File, PrintWriter}
 
 import utilities.FileHandling.openFileWithIterator
 import utilities.GFFutils.Gene
-import utilities.GeneGraphUtils.{GeneGraph}
+import utilities.GeneGraphUtils.{GeneGraph, Paths}
+import utilities.GFAutils.makeGenePathLine
 
 /**
   * Author: Alex N. Salazar
@@ -15,42 +16,44 @@ import utilities.GeneGraphUtils.{GeneGraph}
   */
 object GFAutils {
 
+   /**
+    * Method to create a path line in GFA format
+    *
+    * @param path_name
+    * @param path
+    * @return
+    */
+  def makeGenePathLine(path_name: String, path: List[Gene], length: Int): String = {
+    val path_string = path.map(x => x.id.toString + x.ori).mkString(",")
+    "P\t" + path_name + "\t" + path_string + "\t" + length
+  }
+
+  /**
+    * Method to create segment line for ptolemy's gfa format
+    * @param node
+    * @param gcov
+    * @param acov
+    * @return
+    */
+  def makeSegmentLine(node: Any, gcov: Int, acov: Int): String = "S\t" + node + "\t\tGC:i:" + gcov +
+    "\tRC:i:" + acov
+
+  /**
+    * Method to create link line for ptolemy's gfa format
+    * @param edge
+    * @param gcov
+    * @param acov
+    * @return
+    */
+  def makeLinkLine(edge: (Any, Any), gcov: Int, acov: Int): String = {
+    "L\t" + edge._1 + "\t+\t" + edge._2 + "\t+\t\t" + "GC:i:" + gcov + "\tRC:i:" + acov
+  }
+
   /**
     * Set of methods for writing a file to GFA-format
     */
-  trait GFAwriter {
+  trait GeneGraphWriter {
 
-    /**
-      * Method to create a path line in GFA format
-      *
-      * @param path_name
-      * @param path
-      * @return
-      */
-    def makePathLine(path_name: String, path: List[Gene], length: Int): String = {
-      val path_string = path.map(x => x.id.toString + x.ori).mkString(",")
-      "P\t" + path_name + "\t" + path_string + "\t" + length
-    }
-
-    /**
-      * Method to create segment line for ptolemy's gfa format
-      * @param node
-      * @param gcov
-      * @param acov
-      * @return
-      */
-    def makeSegmentLine(node: Int, gcov: Int, acov: Int): String = "S\t" + node + "\t\tGC:i:" + gcov + "\tRC:i:" + acov
-
-    /**
-      * Method to create link line for ptolemy's gfa format
-      * @param edge
-      * @param gcov
-      * @param acov
-      * @return
-      */
-    def makeLinkLine(edge: (Int, Int), gcov: Int, acov: Int): String = {
-      "L\t" + edge._1 + "\t+\t" + edge._2 + "\t+\t\t" + "GC:i:" + gcov + "\tRC:i:" + acov
-    }
 
     /**
       * Method to output ptolemy gene graph to GFA format (ptolemy version)
@@ -65,7 +68,7 @@ object GFAutils {
       */
     def ptolemyGraph2GFA(pw: PrintWriter,
                          graph: GeneGraph,
-                         paths: Map[String, List[Gene]],
+                         paths: Paths,
                          genome_node_coverage: Map[Int, Int],
                          genome_edge_coverage: Map[(Int,Int), Int],
                          alignment_node_coverage: Map[Int,Int],
@@ -96,62 +99,14 @@ object GFAutils {
         })
       }}
       //iterate through each path and report
-      paths.toList.foreach { case (genome, path) => pw.println(makePathLine(genome, path, -1)) }
+      paths.toList.foreach { case (genome, (path,size)) => pw.println(makeGenePathLine(genome, path, size)) }
       //add read paths, if they exist
       if(tmp_paths != null) openFileWithIterator(tmp_paths).foreach(line => pw.println(line))
     }
 
-    /**
-      * Output a given gene-graph to disk in GFA format
-      *
-      *
-    def graph2GFA(pw: PrintWriter,
-                  graph: GeneGraph,
-                  paths: Map[String, List[Int]): Unit = {
-      //get coverage for every node
-      val node_coverage = paths.toList.foldLeft(Map[Int, Int]()) { case (cov_map, (genome, path)) => {
-        //iterate through each path and update coverage
-        path.foldLeft(cov_map)((acc_cov_map, node) => {
-          //get coverage of current node
-          val cov = acc_cov_map.getOrElse(node, 0) + 1
-          //update coverage
-          acc_cov_map + (node -> cov)
-        })
-      }
-      }
-      //get coverage for every edge
-      val edge_coverage = paths.toList.foldLeft(Map[(Int, Int), Int]()) { case (cov_map, (genome, path)) => {
-        path.sliding(2).foldLeft(cov_map)((acc_cov_map, _edge) => {
-          //get forward edge
-          val forward_edge = (_edge.head, _edge(1))
-          //get reverse edge
-          val reverse_edge = forward_edge.swap
-          //get forward edge coverage
-          val forward_edge_cov = acc_cov_map.getOrElse(forward_edge, 0) + 1
-          //get reverse edge
-          val reverse_edge_cov = acc_cov_map.getOrElse(reverse_edge, 0) + 1
-          //update edge
-          (acc_cov_map + (forward_edge -> forward_edge_cov)) + (reverse_edge -> reverse_edge_cov)
-        })
-      }
-      }
-
-      //output header
-      pw.println("H\tGene-graph")
-      //get all nodes and report cov
-      paths.values.toList.flatten.toSet.toList.sorted
-        .foreach(node => pw.println(makeSegmentLine(node, node_coverage(node))))
-      //iterate through each node and report edge coverage
-      graph.toList.foreach { case (node, edges) => {
-        edges.foreach(edge => pw.println(makeLinkLine((node, edge), edge_coverage.getOrElse((node, edge),0))))
-      }
-      }
-      paths.toList.foreach { case (genome, path) => pw.println(makePathLine(genome, path)) }
-    }
-      */
   }
 
-  trait GFAreader {
+  trait GeneGraphReader {
 
     /**
       * Funtion to parse path column into a list of genes
@@ -166,10 +121,30 @@ object GFAutils {
     }
 
     /**
+      * Function extract edge labels from a given Paths object
+      * @return Map[(Gene,Gene), List[String]
+      */
+    def paths2EdgeLabels: Paths => Map[(Gene,Gene), Set[String]] = paths => {
+      paths.foldLeft(Map[(Gene,Gene), List[String]]()){case (quiver, (name, (path,size))) => {
+        path.size match {
+          case 1 => quiver
+          case _ => path.sliding(2).map(x =>(x(0), x(1))).foldLeft(quiver)((acc, edge) => {
+            //get forward labels
+            val forward = acc.getOrElse(edge, List[String]())
+            //get reverse labels
+            val reverse = acc.getOrElse(edge.swap, List[String]())
+            //update quiver
+            (acc + (edge -> (name :: forward))) + (edge.swap -> (name :: reverse))
+          })
+        }
+      }}.mapValues(_.toSet)
+    }
+
+    /**
       * Function to load GFA file given a file object
       * @return 2-tuple (GeneGraph and List of paths)
       */
-    def loadGFA: File => (GeneGraph, Map[String, (List[Gene], Int)]) = file => {
+    def loadGFA: File => (GeneGraph, Paths) = file => {
       val (all_nodes, all_edges, all_paths) = {
         openFileWithIterator(file).foldLeft((List[Int](), List[(Int, Int)](), List[(String, (List[Gene], Int))]())) {
           case ((nodes, edges, paths), line) => {
@@ -212,7 +187,7 @@ object GFAutils {
 
   }
 
-  trait GFAconverter {
+  trait GeneGraphConverter {
     /**
       * Method to convert GFA-formatted file to CSV file
       * @param gfa

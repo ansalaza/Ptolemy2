@@ -1,6 +1,6 @@
 package utilities
 
-import utilities.GFAutils.{GFAreader, GFAwriter}
+import utilities.GFAutils.{GeneGraphReader, GeneGraphWriter}
 import utilities.GFFutils.Gene
 import utilities.GeneProjectionUtils.FingerTree
 
@@ -13,7 +13,7 @@ import scala.annotation.tailrec
   *
   * Description:
   */
-object GeneGraphUtils extends GFAwriter with GFAreader {
+object GeneGraphUtils extends GeneGraphReader with GeneGraphWriter {
 
   /**
     * Type alias for gene graph
@@ -23,17 +23,17 @@ object GeneGraphUtils extends GFAwriter with GFAreader {
   /**
     * Empty gene graph
     */
-  val empty_gene_graph = Map.empty[Int, List[Int]]
+  val empty_gene_graph: GeneGraph = Map.empty[Int, List[Int]]
 
   /**
     * Type alias for paths
     */
-  type Paths = Map[String, List[Gene]]
+  type Paths = Map[String, (List[Gene], Int)]
 
   /**
     * Empty paths
     */
-  val empty_paths = Map.empty[String, List[Gene]]
+  val empty_paths: Paths = Map.empty[String, (List[Gene], Int)]
 
   /**
     * Type alias for node coverage

@@ -6,7 +6,7 @@ import utilities.GeneGraphUtils.{GeneGraph, Paths, createSAgraph, defineCanonica
 import utilities.FileHandling.{openFileWithIterator, timeStamp, verifyDirectory, verifyFile}
 import utilities.GFFutils.parseMultiGFF2FingerTree
 import utilities.PAFutils.curateAlignmentsPerSeq
-import utilities.GFAutils.GFAwriter
+import utilities.GFAutils.GeneGraphWriter
 import utilities.GeneProjectionUtils.FingerTree
 import utilities.AlignmentGeneGraph.alignmentGeneGraph
 import utilities.AlignmentUtils.{Alignment, getCanonicalMultimappedRegions}
@@ -20,7 +20,7 @@ import utilities.IntervalUtils.longestOverlappingIntervals
   *
   * Description:
   */
-object GeneGraphAlignment extends GFAwriter {
+object GeneGraphAlignment extends GeneGraphWriter {
 
   case class Config(
                      genomeAlignments: File = null,

@@ -52,7 +52,7 @@ object SequenceFormatUtils {
     * whitespace
     * @return String
     */
-  private def parseSeqName: String => String = name => name.split("\\s+").head.substring(1)
+  def parseSeqName: String => String = name => name.split("\\s+").head.substring(1)
 
 
   /**
@@ -120,6 +120,7 @@ object SequenceFormatUtils {
       }
     }
   }
+
 
 
   /**
