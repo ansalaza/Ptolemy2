@@ -6,7 +6,7 @@ import utilities.AlignmentUtils.Alignment
 import utilities.GFFutils.Gene
 import utilities.GeneGraphUtils._
 import utilities.GeneProjectionUtils.{FingerTree, filterByCoverage, projectGenes}
-import utilities.GFAutils.makeGenePathLine
+import utilities.GFAutils.makePathLine
 
 /**
   * Author: Alex N. Salazar
@@ -88,7 +88,7 @@ object AlignmentGeneGraph {
       //get name and size
       val (name, size) = id2seqname(read)
       //create and output path line
-      pw.println(makeGenePathLine(name, architecture, size))
+      pw.println(makePathLine(name, architecture.map(_.gfaID()), size))
     }
     }
     //close tmp file

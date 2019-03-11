@@ -33,6 +33,9 @@ object GFFutils {
       * @return PathEntry
       */
     def reverse(): Gene = new Gene(id, (if(isForward) '-' else '+'))
+
+    def gfaID(): String = id.toString + ori
+
   }
 
   /**

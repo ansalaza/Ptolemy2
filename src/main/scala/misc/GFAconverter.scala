@@ -17,7 +17,6 @@ object GFAconverter extends GeneGraphConverter {
   case class Config(
                      gfaFile: File = null,
                      outputDir: File = null,
-                     coverage: Char = 'a',
                      labels: File = null,
                      formats: String = null)
 
@@ -32,9 +31,6 @@ object GFAconverter extends GeneGraphConverter {
       opt[String]('f', "formats") required() action { (x, c) =>
         c.copy(formats = x)
       } text ("Comma-separated string containing format IDs to convert GFA to. Current supported options: 'csv'.")
-      opt[Char]("coverage") required() action { (x, c) =>
-        c.copy(coverage = x)
-      } text ("Use [g]enome coverage or [r]ead coverage as node/edge weights.")
       note("\nOPTIONAL")
       opt[File]("labels") action { (x, c) =>
         c.copy(labels = x)
@@ -44,8 +40,6 @@ object GFAconverter extends GeneGraphConverter {
       //check whether output directory exists. If not, create it.
       verifyDirectory(config.outputDir)
       verifyFile(config.gfaFile)
-      assert(config.coverage == 'g' || config.coverage == 'r', "Specify 'g' for genome coverage or 'r' for read " +
-        "coverage.")
       gfa2Format(config)
     }
   }
@@ -67,7 +61,7 @@ object GFAconverter extends GeneGraphConverter {
           val pw_node = new PrintWriter(config.outputDir + "/" + getFileName(config.gfaFile) + ".nodes.csv")
           val pw_edge = new PrintWriter(config.outputDir + "/" + getFileName(config.gfaFile) + ".edges.csv")
           //convert to CSV format
-          gfa2CSV(config.gfaFile, (if(config.coverage == 'g') "GC:i:" else "RC:i:"), pw_node, pw_edge, labels)
+          gfa2CSV(config.gfaFile, pw_node, pw_edge, labels)
           //close files
           pw_edge.close
           pw_node.close

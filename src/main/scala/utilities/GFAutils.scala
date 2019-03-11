@@ -4,8 +4,8 @@ import java.io.{File, PrintWriter}
 
 import utilities.FileHandling.openFileWithIterator
 import utilities.GFFutils.Gene
-import utilities.GeneGraphUtils.{GeneGraph, Paths}
-import utilities.GFAutils.makeGenePathLine
+import utilities.GeneGraphUtils.{GeneGraph, GenePaths}
+import utilities.SequenceGraphUtils.{SequenceGraph, SequencePaths}
 
 /**
   * Author: Alex N. Salazar
@@ -16,38 +16,69 @@ import utilities.GFAutils.makeGenePathLine
   */
 object GFAutils {
 
-   /**
+  /**
     * Method to create a path line in GFA format
     *
     * @param path_name
     * @param path
     * @return
     */
-  def makeGenePathLine(path_name: String, path: List[Gene], length: Int): String = {
-    val path_string = path.map(x => x.id.toString + x.ori).mkString(",")
-    "P\t" + path_name + "\t" + path_string + "\t" + length
+  def makePathLine(path_name: String, path: List[String], length: Int): String = {
+    "P\t" + path_name + "\t" + path.mkString(",") + "\t" + length
   }
+
 
   /**
     * Method to create segment line for ptolemy's gfa format
+    *
     * @param node
-    * @param gcov
-    * @param acov
+    * @param cov
     * @return
     */
-  def makeSegmentLine(node: Any, gcov: Int, acov: Int): String = "S\t" + node + "\t\tGC:i:" + gcov +
-    "\tRC:i:" + acov
+  def makeSegmentLine(node: Any, seq: Option[String], cov: Int): String =
+    "S\t" + node + "\t" + (if (seq.isEmpty) "" else seq.get) + "\tFC:i:" + +cov
 
   /**
     * Method to create link line for ptolemy's gfa format
+    *
     * @param edge
-    * @param gcov
-    * @param acov
+    * @param cov
     * @return
     */
-  def makeLinkLine(edge: (Any, Any), gcov: Int, acov: Int): String = {
-    "L\t" + edge._1 + "\t+\t" + edge._2 + "\t+\t\t" + "GC:i:" + gcov + "\tRC:i:" + acov
+  def makeLinkLine(edge: (Any, Any), cov: Int): String = "L\t" + edge._1 + "\t+\t" + edge._2 + "\t+\t\tFC:i:" + cov
+
+  trait SequenceGraphWriter {
+    def seqGraph2GFA(pw: PrintWriter,
+                     graph: SequenceGraph,
+                     paths: SequencePaths,
+                     node_coverage: Map[String, Int],
+                     edge_coverage: Map[(String, String), Int]): Unit = {
+
+      //output header
+      pw.println("H\tSequence-graph")
+      //get all nodes and report cov
+      graph.keys.toList.sortBy(x => (x.seq_id, x.gene_id)).foreach(node => {
+        pw.println(makeSegmentLine(node.gfaID(), Option(node.aa.toString), node_coverage.getOrElse(node.gfaID(), 0)))
+      })
+
+      //iterate through each node and report edge coverage
+      graph.toList.foreach { case (node, edges) => {
+        //iterate through each edge
+        edges.foreach(edge => {
+          //output line
+          pw.println(makeLinkLine((node.gfaID(), edge.gfaID()),
+            edge_coverage.getOrElse((node.gfaID(), edge.gfaID()), 0)))
+        })
+      }
+      }
+      //iterate through each path and report
+      paths.toList.foreach { case (genome, path) =>
+        pw.println(makePathLine(genome, path.map(x => x.gfaID() + "+"), path.size))
+      }
+    }
+
   }
+
 
   /**
     * Set of methods for writing a file to GFA-format
@@ -57,51 +88,42 @@ object GFAutils {
 
     /**
       * Method to output ptolemy gene graph to GFA format (ptolemy version)
+      *
       * @param pw
       * @param graph
-      * @param paths
-      * @param genome_node_coverage
-      * @param genome_edge_coverage
       * @param alignment_node_coverage
       * @param alignment_edge_coverage
       * @param tmp_paths
       */
-    def ptolemyGraph2GFA(pw: PrintWriter,
-                         graph: GeneGraph,
-                         paths: Paths,
-                         genome_node_coverage: Map[Int, Int],
-                         genome_edge_coverage: Map[(Int,Int), Int],
-                         alignment_node_coverage: Map[Int,Int],
-                         alignment_edge_coverage: Map[(Int,Int), Int],
-                         tmp_paths: File = null): Unit = {
+    def geneGraph2GFA(pw: PrintWriter,
+                      graph: GeneGraph,
+                      paths: Option[GenePaths],
+                      alignment_node_coverage: Map[Int, Int],
+                      alignment_edge_coverage: Map[(Int, Int), Int],
+                      tmp_paths: File = null): Unit = {
 
       //output header
       pw.println("H\tGene-graph")
       //get all nodes and report cov
       graph.keys.toList.sorted.foreach(node => {
         //output line
-        pw.println(
-          makeSegmentLine(node,
-            genome_node_coverage.getOrElse(node, 0),
-            alignment_node_coverage.getOrElse(node, 0)))
+        pw.println(makeSegmentLine(node, None, alignment_node_coverage.getOrElse(node, 0)))
       })
       //iterate through each node and report edge coverage
       graph.toList.foreach { case (node, edges) => {
         //iterate through each edge
         edges.foreach(edge => {
           //output line
-          pw.println(
-            makeLinkLine((node, edge),
-              genome_edge_coverage.getOrElse((node, edge), 0),
-              alignment_edge_coverage.getOrElse((node, edge), 0)
-            )
+          pw.println(makeLinkLine((node, edge), alignment_edge_coverage.getOrElse((node, edge), 0))
           )
         })
-      }}
-      //iterate through each path and report
-      paths.toList.foreach { case (genome, (path,size)) => pw.println(makeGenePathLine(genome, path, size)) }
+      }
+      }
+      if(paths.nonEmpty) {
+        paths.get.foreach(path => pw.println(makePathLine(path._1, path._2._1.map(_.gfaID()), path._2._2)))
+      }
       //add read paths, if they exist
-      if(tmp_paths != null) openFileWithIterator(tmp_paths).foreach(line => pw.println(line))
+      if (tmp_paths != null) openFileWithIterator(tmp_paths).foreach(line => pw.println(line))
     }
 
   }
@@ -110,25 +132,27 @@ object GFAutils {
 
     /**
       * Funtion to parse path column into a list of genes
+      *
       * @return
       */
     def parsePath: String => List[Gene] = line => {
       line.split(",").toList.map(x => {
         val (node, ori) = x.partition(_.isDigit)
         assert(ori.size == 1 && (ori.head == '-' || ori.head == '+'), "Unexpected orientation for path line: " + line)
-        new Gene(node.toInt,ori.head)
+        new Gene(node.toInt, ori.head)
       })
     }
 
     /**
       * Function extract edge labels from a given Paths object
+      *
       * @return Map[(Gene,Gene), List[String]
       */
-    def paths2EdgeLabels: Paths => Map[(Gene,Gene), Set[String]] = paths => {
-      paths.foldLeft(Map[(Gene,Gene), List[String]]()){case (quiver, (name, (path,size))) => {
+    def paths2EdgeLabels: GenePaths => Map[(Gene, Gene), Set[String]] = paths => {
+      paths.foldLeft(Map[(Gene, Gene), List[String]]()) { case (quiver, (name, (path, size))) => {
         path.size match {
           case 1 => quiver
-          case _ => path.sliding(2).map(x =>(x(0), x(1))).foldLeft(quiver)((acc, edge) => {
+          case _ => path.sliding(2).map(x => (x(0), x(1))).foldLeft(quiver)((acc, edge) => {
             //get forward labels
             val forward = acc.getOrElse(edge, List[String]())
             //get reverse labels
@@ -137,14 +161,16 @@ object GFAutils {
             (acc + (edge -> (name :: forward))) + (edge.swap -> (name :: reverse))
           })
         }
-      }}.mapValues(_.toSet)
+      }
+      }.mapValues(_.toSet)
     }
 
     /**
       * Function to load GFA file given a file object
+      *
       * @return 2-tuple (GeneGraph and List of paths)
       */
-    def loadGFA: File => (GeneGraph, Paths) = file => {
+    def loadGFA: File => (GeneGraph, GenePaths) = file => {
       val (all_nodes, all_edges, all_paths) = {
         openFileWithIterator(file).foldLeft((List[Int](), List[(Int, Int)](), List[(String, (List[Gene], Int))]())) {
           case ((nodes, edges, paths), line) => {
@@ -176,11 +202,12 @@ object GFAutils {
       //sanity check that all nodes are accounted for
       all_nodes.foreach(node => assert(graph.contains(node), "Expected node " + node + " in graph"))
       //sanity check that there are bi-direction edges
-      graph.toList.foreach{case (node, edges) => {
+      graph.toList.foreach { case (node, edges) => {
         edges.foreach(edge => {
-          assert(graph(edge).toSet.contains(node), "Expected bi-directional edge for " + (node,edge))
+          assert(graph(edge).toSet.contains(node), "Expected bi-directional edge for " + (node, edge))
         })
-      }}
+      }
+      }
       (graph, all_paths.toMap)
     }
 
@@ -190,29 +217,29 @@ object GFAutils {
   trait GeneGraphConverter {
     /**
       * Method to convert GFA-formatted file to CSV file
+      *
       * @param gfa
       * @param pw_node
       * @param pw_edge
       */
     def gfa2CSV(gfa: File,
-                coverage: String,
                 pw_node: PrintWriter,
                 pw_edge: PrintWriter,
-                labels: Map[Int,String] = Map()): Unit = {
+                labels: Map[Int, String] = Map()): Unit = {
       //output headers
-      pw_node.println("Id;Weight" + (if(labels.isEmpty) "" else ";Label"))
+      pw_node.println("Id;Weight" + (if (labels.isEmpty) "" else ";Label"))
       pw_edge.println("Source;Target;Weight")
       //iterate through each line in gfa file
       openFileWithIterator(gfa).toList.foreach(line => {
         //split
         val split = line.split("\t")
         //attempt to get coverage
-        val cov = split.find(_.startsWith(coverage))
+        val cov = split.find(_.startsWith("FC:i:"))
         //only process link lines
         split.head match {
           //output segment line
           case "S" => pw_node.println(split(1) + (if (cov.isEmpty) "" else ";" + cov.get.filter(_.isDigit)) +
-            (if(labels.isEmpty) "" else (";\"" + labels.getOrElse(split(1).toInt, "None")) + "\""))
+            (if (labels.isEmpty) "" else (";\"" + labels.getOrElse(split(1).toInt, "None")) + "\""))
           //output link line
           case "L" => {
             //output information in CSV-format

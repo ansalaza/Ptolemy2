@@ -28,12 +28,12 @@ object GeneGraphUtils extends GeneGraphReader with GeneGraphWriter {
   /**
     * Type alias for paths
     */
-  type Paths = Map[String, (List[Gene], Int)]
+  type GenePaths = Map[String, (List[Gene], Int)]
 
   /**
     * Empty paths
     */
-  val empty_paths: Paths = Map.empty[String, (List[Gene], Int)]
+  val empty_paths: GenePaths = Map.empty[String, (List[Gene], Int)]
 
   /**
     * Type alias for node coverage

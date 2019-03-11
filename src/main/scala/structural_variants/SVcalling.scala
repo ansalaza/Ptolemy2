@@ -21,7 +21,7 @@ object SVcalling extends GeneGraphReader {
 
     val msa = new File("D:\\asalazar\\Desktop\\playground\\phage_architecture\\t1\\test.mfsa.fa")
 
-    val (seqgraph, seqpaths) = msa2SequenceGraph(msa)
+    val (seqgraph, seqpaths) = msa2SequenceGraph(msa, 0)
 
     //seqgraph.toList.sortBy(_._1.id).foreach(println)
     //seqpaths.foreach(println)

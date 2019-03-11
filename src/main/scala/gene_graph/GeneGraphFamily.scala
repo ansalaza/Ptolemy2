@@ -196,7 +196,7 @@ object GeneGraphFamily extends GeneGraphWriter {
       " distinct edges")
     println(timeStamp + "Writing to disk")
     val pw2 = new PrintWriter(config.outputDir + "/" + config.prefix + ".gfa")
-    ptolemyGraph2GFA(pw2, graph, genome_paths, ncov, ecov, Map(), Map())
+    geneGraph2GFA(pw2, graph, Option(genome_paths), ncov, ecov)
     pw2.close
     println(timeStamp + "Successfully completed!")
 

@@ -2,16 +2,13 @@ package gene_graph
 
 import java.io.{File, PrintWriter}
 
-import utilities.GeneGraphUtils.{GeneGraph, Paths, createSAgraph, defineCanonicalIDs, empty_gene_graph, empty_paths, getConnectedComponents}
+import utilities.GeneGraphUtils.{GeneGraph, empty_gene_graph}
 import utilities.FileHandling.{openFileWithIterator, timeStamp, verifyDirectory, verifyFile}
 import utilities.GFFutils.parseMultiGFF2FingerTree
 import utilities.PAFutils.curateAlignmentsPerSeq
 import utilities.GFAutils.GeneGraphWriter
 import utilities.GeneProjectionUtils.FingerTree
 import utilities.AlignmentGeneGraph.alignmentGeneGraph
-import utilities.AlignmentUtils.{Alignment, getCanonicalMultimappedRegions}
-import utilities.GenomeGeneGraph.{findSytenicAnchors, ptolemyGeneGraph}
-import utilities.IntervalUtils.longestOverlappingIntervals
 
 /**
   * Author: Alex N. Salazar
@@ -23,7 +20,6 @@ import utilities.IntervalUtils.longestOverlappingIntervals
 object GeneGraphAlignment extends GeneGraphWriter {
 
   case class Config(
-                     genomeAlignments: File = null,
                      readAlignments: File = null,
                      gffFile: File = null,
                      outputDir: File = null,
@@ -45,10 +41,7 @@ object GeneGraphAlignment extends GeneGraphWriter {
       opt[File]('g', "gff-files") required() action { (x, c) =>
         c.copy(gffFile = x)
       } text ("File containing full path to all corresponding GFF3-formatted files, one per line.")
-      opt[File]('w', "wg-alignments") action { (x, c) =>
-        c.copy(genomeAlignments = x)
-      } text ("Whole genome alignments in PAF-format.")
-      opt[File]('r', "read-alignments") action { (x, c) =>
+      opt[File]('r', "read-alignments") required() action { (x, c) =>
         c.copy(readAlignments = x)
       } text ("Long-read alignments in PAF-format.")
       opt[File]('o', "output-directory") required() action { (x, c) =>
@@ -98,10 +91,6 @@ object GeneGraphAlignment extends GeneGraphWriter {
       //check whether output directory exists. If not, create it.
       verifyDirectory(config.outputDir)
       verifyFile(config.gffFile)
-      if (config.genomeAlignments == null && config.readAlignments == null) {
-        assert(false, "Provide a genome alignmnet or read alignment file.")
-      }
-      if (config.genomeAlignments != null) verifyFile(config.genomeAlignments)
       if (config.readAlignments != null) verifyFile(config.readAlignments)
       constructGeneGraph(config)
     }
@@ -131,29 +120,16 @@ object GeneGraphAlignment extends GeneGraphWriter {
     /* END: PARSE GFF3-FORMATTED FILE INTO FINGER TREE DATA STRUCTURES */
 
     /**
-      * Create gene graph from whole genome and long-read alignment. First create gene-graph from genome alignments
-      * (note that an empty graph is returned if no whole genome alignments were provided). The resulting graph is
-      * then updated with the long-read alignments (note not updates are made if no long-read alignments were provided).
-      *
+      * Create gene graph from long-read alignment.
       * Returns 6-tuple: (final gene graph, genome paths (can be empty), node coverage from alignments (can be empty),
       * edge coverage from alignments (can be empty), temporary file contaning gene projecton individual reads (can
       * be null).
       */
-    val (
-      gene_graph,
-      genome_paths,
-      genome_node_coverage,
-      genome_edge_coverage,
-      alignment_node_coverage,
-      alignment_edge_coverage,
-      tmp_projection) = {
-      //open and curate whole genome alignments, if any
-      val (genome_gene_graph, genome_paths, sa_mappings, gnode_coverage, gedge_coverage) =
-        createGenomeGeneGraph(global_fingertree, config)
+    val (gene_graph, alignment_node_coverage, alignment_edge_coverage, tmp_projection) = {
       //open and curate long-read alignments, if any
-      val g = createAlignmentGeneGraph(global_fingertree, config, genome_gene_graph, sa_mappings)
+      val g = createAlignmentGeneGraph(global_fingertree, config)
       //return final gene graph, genome paths,
-      (g._1, genome_paths, gnode_coverage, gedge_coverage, g._2, g._3, g._4)
+      (g._1, g._2, g._3, g._4)
     }
 
     //total nodes
@@ -166,8 +142,7 @@ object GeneGraphAlignment extends GeneGraphWriter {
     //create output file
     val pw = new PrintWriter(config.outputDir + "/" + config.prefix + ".gfa")
     //output graph to gfa
-    ptolemyGraph2GFA(pw, gene_graph, genome_paths, genome_node_coverage, genome_edge_coverage,
-      alignment_node_coverage, alignment_edge_coverage, tmp_projection)
+    geneGraph2GFA(pw, gene_graph, None, alignment_node_coverage, alignment_edge_coverage, tmp_projection)
     pw.close()
     //create id file
     val pw2 = new PrintWriter(config.outputDir + "/" + config.prefix + ".node_ids.txt")
@@ -175,82 +150,6 @@ object GeneGraphAlignment extends GeneGraphWriter {
     pw2.close
     println(timeStamp + "Successfully completed!")
 
-  }
-
-  /**
-    * Method to create gene graphs from whole genome alignments. Will return empty graph and paths if no whole genome
-    * alignments were provided
-    *
-    * @param fingertrees Finger tree data structures of all the genomes
-    * @param config      configuration object
-    * @return 5-tuple as (GeneGraph, Paths, SA-mappings, Node coverage, Edge coverage). SA-mappings is map(old id ->
-    *         new id) for the new assigned id for each ortholog cluster
-    */
-  def createGenomeGeneGraph(fingertrees: Map[String, FingerTree],
-                            config: Config): (GeneGraph, Paths, Map[Int, Int], Map[Int, Int], Map[(Int, Int), Int]) = {
-    //user did not provide whole genome alignments
-    if (config.genomeAlignments == null) {
-      println(timeStamp + "Skipping gene graph construction from whole genome alignments")
-      (empty_gene_graph, empty_paths, Map.empty[Int, Int], Map.empty[Int, Int], Map.empty[(Int,Int), Int])
-    }
-    //user provided whole genome alignments, construct gene graphs
-    else {
-      println(timeStamp + "Constructing native gene graphs from genomes")
-      /* START: CURATE GENOME ALIGNMENTS*/
-      println(timeStamp + "Curating whole genome alignments")
-      //initialize id to genome map by parsing genome alignments file
-      val (_id2genome, initial_id) = openFileWithIterator(config.genomeAlignments).foldLeft(List[(String, Int)]()) {
-        case (genomes, line) => {
-          //split line
-          val split = line.split("\t")
-          //add genome names and their sizes to list
-          (split(5), split(6).toInt) :: ((split(0), split(1).toInt) :: genomes)
-        }
-      }
-        //get all unique entries
-        .toSet.toList
-        //iterate and assigne unique IDs
-        .foldLeft((List[(String, (Int, Int))](), 0)) { case ((genome_ids, id), (name, size)) => {
-        ((name, (id, size)) :: genome_ids, id + 1)
-      }
-      }
-      //curate whole genome alignments
-      val (id2genome, curated_alignments) = {
-        //curate alignments
-        val tmp = curateAlignmentsPerSeq(config.genomeAlignments, config.minMapq, config.minMultiMap, config.minDist,
-          initial_id, _id2genome.toMap)
-        //if no exclusive file found, move on
-        if (config.excludeSeqFile == null) tmp
-        //exclude specified sequences
-        else {
-          //verify file
-          verifyFile(config.excludeSeqFile)
-          //get all read ids to exclude
-          val excluded_seqs = openFileWithIterator(config.excludeSeqFile).toList.toSet
-          println(timeStamp + "Found " + excluded_seqs.size + " sequences to exclude")
-          //get corresponding ids for reads to exclude
-          val excluded_ids = tmp._1.toList.foldLeft(List[Int]())((ids, read) => {
-            //only add ids if they belong to the exclude set
-            if (!excluded_seqs(read._2._1)) ids else read._1 :: ids
-          }).toSet
-          //filter out alignments
-          (tmp._1.filterNot(x => excluded_seqs(x._2._1)), tmp._2.filterNot(x => excluded_ids(x._1)))
-        }
-      }
-      /* END: CURATE GENOME ALIGNMENTS*/
-      //identify syntenic anchors
-      val sa_graph = {
-        //create SA graph
-        createSAgraph(
-          //identify all syntenic anchors
-        findSytenicAnchors(fingertrees, id2genome, config.minAlignmentCov, config.splitOri,
-          curated_alignments)
-        )
-      }
-      //construct ptolemy gene graph
-      println(timeStamp + "Constructing gene graph from whole genome alignments")
-      ptolemyGeneGraph(fingertrees, sa_graph)
-    }
   }
 
   def createAlignmentGeneGraph(fingertrees: Map[String, FingerTree],
@@ -368,3 +267,88 @@ object GeneGraphAlignment extends GeneGraphWriter {
     }
   }
 }
+
+
+
+
+/*
+
+  Archived code:
+
+   /**
+    * Method to create gene graphs from whole genome alignments. Will return empty graph and paths if no whole genome
+    * alignments were provided
+    *
+    * @param fingertrees Finger tree data structures of all the genomes
+    * @param config      configuration object
+    * @return 5-tuple as (GeneGraph, Paths, SA-mappings, Node coverage, Edge coverage). SA-mappings is map(old id ->
+    *         new id) for the new assigned id for each ortholog cluster
+    */
+  def createGenomeGeneGraph(fingertrees: Map[String, FingerTree],
+                            config: Config): (GeneGraph, Paths, Map[Int, Int], Map[Int, Int], Map[(Int, Int), Int]) = {
+    //user did not provide whole genome alignments
+    if (config.genomeAlignments == null) {
+      println(timeStamp + "Skipping gene graph construction from whole genome alignments")
+      (empty_gene_graph, empty_paths, Map.empty[Int, Int], Map.empty[Int, Int], Map.empty[(Int,Int), Int])
+    }
+    //user provided whole genome alignments, construct gene graphs
+    else {
+      println(timeStamp + "Constructing native gene graphs from genomes")
+      /* START: CURATE GENOME ALIGNMENTS*/
+      println(timeStamp + "Curating whole genome alignments")
+      //initialize id to genome map by parsing genome alignments file
+      val (_id2genome, initial_id) = openFileWithIterator(config.genomeAlignments).foldLeft(List[(String, Int)]()) {
+        case (genomes, line) => {
+          //split line
+          val split = line.split("\t")
+          //add genome names and their sizes to list
+          (split(5), split(6).toInt) :: ((split(0), split(1).toInt) :: genomes)
+        }
+      }
+        //get all unique entries
+        .toSet.toList
+        //iterate and assigne unique IDs
+        .foldLeft((List[(String, (Int, Int))](), 0)) { case ((genome_ids, id), (name, size)) => {
+        ((name, (id, size)) :: genome_ids, id + 1)
+      }
+      }
+      //curate whole genome alignments
+      val (id2genome, curated_alignments) = {
+        //curate alignments
+        val tmp = curateAlignmentsPerSeq(config.genomeAlignments, config.minMapq, config.minMultiMap, config.minDist,
+          initial_id, _id2genome.toMap)
+        //if no exclusive file found, move on
+        if (config.excludeSeqFile == null) tmp
+        //exclude specified sequences
+        else {
+          //verify file
+          verifyFile(config.excludeSeqFile)
+          //get all read ids to exclude
+          val excluded_seqs = openFileWithIterator(config.excludeSeqFile).toList.toSet
+          println(timeStamp + "Found " + excluded_seqs.size + " sequences to exclude")
+          //get corresponding ids for reads to exclude
+          val excluded_ids = tmp._1.toList.foldLeft(List[Int]())((ids, read) => {
+            //only add ids if they belong to the exclude set
+            if (!excluded_seqs(read._2._1)) ids else read._1 :: ids
+          }).toSet
+          //filter out alignments
+          (tmp._1.filterNot(x => excluded_seqs(x._2._1)), tmp._2.filterNot(x => excluded_ids(x._1)))
+        }
+      }
+      /* END: CURATE GENOME ALIGNMENTS*/
+      //identify syntenic anchors
+      val sa_graph = {
+        //create SA graph
+        createSAgraph(
+          //identify all syntenic anchors
+        findSytenicAnchors(fingertrees, id2genome, config.minAlignmentCov, config.splitOri,
+          curated_alignments)
+        )
+      }
+      //construct ptolemy gene graph
+      println(timeStamp + "Constructing gene graph from whole genome alignments")
+      ptolemyGeneGraph(fingertrees, sa_graph)
+    }
+  }
+
+  */
