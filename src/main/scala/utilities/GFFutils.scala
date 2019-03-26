@@ -53,7 +53,12 @@ object GFFutils {
     * @param ori
     * @param name
     */
-  private case class GFFLine(chrm: String, feature: String, start: Int, end: Int, ori: Char, name: String,
+  private case class GFFLine(chrm: String,
+                             feature: String,
+                             start: Int,
+                             end: Int,
+                             ori: Char,
+                             name: String,
                              geneID: String)
 
   /**

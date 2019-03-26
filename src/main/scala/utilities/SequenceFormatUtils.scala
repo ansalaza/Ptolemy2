@@ -130,7 +130,9 @@ object SequenceFormatUtils {
     * @param pw Output file as printwriter
     * @param seqs Sequence file as File object
     */
-  def fetchSubSeqs(config_map: Map[String, List[(Int, Int)]], pw: PrintWriter, seqs: File): Unit = {
+  def fetchSubSeqs(config_map: Map[String, List[(Int, Int)]],
+                   pw: PrintWriter,
+                   seqs: File): Unit = {
     /**
       * Function to output the subsequences of a sequence given the sequence name, sequence, and list of coordinates
       * @return Unit
@@ -143,9 +145,23 @@ object SequenceFormatUtils {
         //this sequence has no coordinate, output entire sequence
         if (coords.get.isEmpty) pw.println(">" + name + "\n" + seq)
         else {
+          //get total sequence length
+          val length = seq.size
           //iterate through each coordinate and output subsequence
-          coords.get.foreach(coord =>
-            pw.println(">" + name + "_" + coord._1 + "_" + coord._2 + "\n" + seq.substring(coord._1, coord._2))
+          coords.get.foreach(coord =>{
+            //linear extraction
+            if(coord._2 <= length)
+              pw.println(">" + name + "_" + coord._1 + "_" + coord._2 + "\n" + seq.substring(coord._1, coord._2))
+            //circular extraction
+            else {
+              //compute coordinates overlapping with start (circular genome
+              val start_offset = coord._2 - length
+              //output dna sequence considering circular layout
+              pw.println(">" + name + "_" + coord._1 + "_" + (coord._2 + start_offset))
+              pw.print(seq.substring(coord._1, coord._2))
+              pw.println(seq.substring(0, start_offset))
+            }
+          }
           )
         }
       }
@@ -201,35 +217,49 @@ object SequenceFormatUtils {
     }
   }
 
+  /**
+    *
+    * @param file
+    * @param outputdir
+    */
   def convertFromGenBank(file: File, outputdir: File): Unit = {
 
+    /**
+      *
+      * @return
+      */
     def isDNA: Char => Boolean = nt => List('A', 'C', 'T', 'G', 'N').exists(_ == nt.toUpper)
 
     /**
-      * Function to parse coordinate line of a genbank feature
-      *
-      * @return 2-tuple: ((Int,Int), Char)
+      * Parse coordinates and orientation of a gene's coordinate line. Returns a 2-tuple representing a list of
+      * coordinates and orientation. Cicular-aware, hence, list of coordinates.
+      * @return 2-tuple: (List[Int], Char)
       */
-    def parseCoords: String => ((Int, Int), Char) = str => {
-      //get string representing coordinates and orientation
-      val (line, ori) = {
-        //positive strand
-        if (!str.contains("complement") && !str.contains("join")) (str, '+')
-        //negative strand
-        else {
-          //modify string in case there is a 'join' segment
-          val tmp = {
-            if(!str.contains("join")) str
-            else str.replaceAll("join", "").drop(1).dropRight(1).split(",").head
-          }
-          if(!tmp.contains("complement")) (tmp, '+')
-          else (tmp.replaceAll("complement", "").drop(1).dropRight(1), '-')
-        }
+    def parseCoordsLine: String => (List[Int], Char) = line => {
+      //get coordinates by removing tags like 'join' and 'complement', join all coords into a list of ints
+      val coords =
+        line.filter(x => x.isDigit || x == '.' | x == ',').replaceAll("..", ",").split(",").toList.map(_.toInt)
+      //assert either two coordinates or four
+      assert(coords.size == 2 || coords.size == 4, "Unexpected number of coordinates: " + line)
+      //forward orientation, extract coords
+      if(!line.contains("complement")) (coords, '+')
+      //entire gene is in reverse orientation
+      else if(line.startsWith("complement")) (coords, '-')
+      //two joined-segments, both which are in reverse orientation
+      else {
+        //pseudo regex line
+        val reg = "complement".r
+        //assert there are two complement segments
+        assert(reg.findAllMatchIn(line).size == 2, "Expected two complement segments: " + line)
+        //assert four coordinates
+        assert(coords.size == 4, "Expected four coordinates due to two complement segments: " + line)
+        //get first and second set of coordinates
+        val (first, second) = (coords.take(2), coords.takeRight(2))
+        //assert first coordinates are all larger than the second
+        assert(second.head == 1 && first.forall(x => second.forall(_ < x)),
+          "Expected second segment to begin at start of the genome: " + line)
+        (coords, '-')
       }
-      //get string coordinates
-      val coords = line.splitAt(line.indexOf(".."))
-      //return as ints
-      ((coords._1.toInt, coords._2.drop(2).toInt), ori)
     }
 
     //set fasta output
@@ -256,17 +286,25 @@ object SequenceFormatUtils {
       //sanity check
       assert(lines.size == 3, "Expected 3 CDS entry lines: " + lines)
       //get coordinates and orientation
-      val (coords, ori) = parseCoords(lines.last)
+      val (coords, ori) = parseCoordsLine(lines.last)
+      //set start end
+      val (start,end) = (coords.head, if(coords.size == 2) coords(1) else coords(1) + coords(3))
       //get gene product description
       val description = lines.head.replaceAll("/product=", "").drop(1).dropRight(1)
       //get protein sequence
       val protein_seq = lines(1).replace("/translation=", "").drop(1).dropRight(1)
-      pw_gff.println(List(seqname, "", "CDS", coords._1, coords._2, "", ori, "",
+      pw_gff.println(List(seqname, "", "CDS", start, end, "", ori, "",
         "protein_id=" + (seqname + "_" + id) + ";product=" + description).mkString("\t"))
       pw_proteins.println(">" + seqname + "_" + id)
       pw_proteins.println(protein_seq)
     }
 
+    /**
+      *
+      * @param acc
+      * @param id
+      * @return
+      */
     def parseGenBank(acc: List[String], id: Int): String = {
       //end of file
       if (iterator.isEmpty) {
