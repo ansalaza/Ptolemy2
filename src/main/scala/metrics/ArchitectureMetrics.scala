@@ -24,6 +24,7 @@ object ArchitectureMetrics extends GeneGraphReader {
                      outputDir: File = null,
                      minLength: Int = 1,
                      exclude: File = null,
+                     directed: Boolean = false,
                      prefix: String = null)
 
   def main(args: Array[String]) {
@@ -41,9 +42,12 @@ object ArchitectureMetrics extends GeneGraphReader {
       opt[Int]("min-length") action { (x, c) =>
         c.copy(minLength = x)
       } text ("Prefix for output file.")
-      opt[File]("exclude-ids") action { (x,c) =>
+      opt[File]("exclude-ids") action { (x, c) =>
         c.copy(exclude = x)
       } text ("Exclude the following ID's in projected paths.")
+      opt[Unit]("directed") action { (x, c) =>
+        c.copy(directed = true)
+      } text ("Graph is directed.")
     }
     parser.parse(args, Config()).map { config =>
       //check whether input file/directories exists
@@ -55,13 +59,15 @@ object ArchitectureMetrics extends GeneGraphReader {
 
   def geneGraphMetrics(config: Config): Unit = {
     //get excluded IDs, if any
-    val exclude = if(config.exclude == null) Set[Int]() else openFileWithIterator(config.exclude).toList.map(_.toInt).toSet
+    val exclude = if (config.exclude == null) Set[Int]() else openFileWithIterator(config.exclude).toList.map(_.toInt).toSet
     println(timeStamp + "Processing paths from GFA file")
     //fetch architectures from GFA file as 2-tuple: (architecture/path, (total instances, list of all names))
     val architectures = {
-      //load gfa file, only retain paths, iterate and retain only those that pass thresholds
-      loadGFA(config.gfaFile)._2.toList.foldLeft(List[(String, List[Gene])]()){case(acc, (name, (path,size))) => {
-        if(path.isEmpty || size < config.minLength) acc
+      //load gfa file and only retain paths
+      loadGFA(config.gfaFile, config.directed)._2.toList
+        //iterate and retain only those that pass thresholds
+        .foldLeft(List[(String, List[Gene])]()) { case (acc, (name, (path, size))) => {
+        if (path.isEmpty || size < config.minLength) acc
         else {
           //get all different orientations of current path
           val path_orientations = path.map(_.ori).toSet.toList
@@ -74,11 +80,12 @@ object ArchitectureMetrics extends GeneGraphReader {
           }
           (name, updated_path) :: acc
         }
-      }}
+      }
+      }
         //group by architecture
         .groupBy(_._2)
         //sort by most frequent
-        .toList.sortBy(- _._2.size)
+        .toList.sortBy(-_._2.size)
         //assign unique IDs as keys and values as 4-tuples: (Path, Ori value, frequency, Seq IDs)
         .foldLeft((Map[Int, (List[Gene], Int, Int, List[String])](), 0)) { case ((map, id), path) => {
         (map + ((id) -> (path._1, path._1.map(_.ori).toSet.size - 1, path._2.size, path._2.map(_._1))), id + 1)
@@ -100,65 +107,6 @@ object ArchitectureMetrics extends GeneGraphReader {
           "\t" + names.mkString(","))
     })
     pw.close()
-
-    /**
-      * Function to compute the normalized edit distance of two given architecture IDs. This is defined as:
-      * dist = min{ editDist(x,y), editDist(x, y.reverse), editDist(x.reverse, y), editDist(x.reverse, y.reverse }
-      * size = min{ x.size, y.size }
-      * 1 - ( dist / size)
-      *
-      * @return Double
-      */
-    def computeNormEditDist: (Int, Int) => Double = (_x, _y) => {
-      //get architectures
-      val (x, y) = (architectures(_x)._1.map(_.id), architectures(_y)._1.map(_.id))
-      //get min size
-      val min_size = min(x.size, y.size).toDouble
-      //no overlap, return max normalized distance
-      if(x.toSet.intersect(y.toSet).size == 0) 1.0
-      //compute distance for all possible forms
-      else {
-        //compute edit distance as:
-        val edit_distance = List(
-          //normal orientations
-          editDist(x, y),
-          //y-reverse
-          editDist(x, y.reverse),
-          //x-reverse
-          editDist(x.reverse, y),
-          //both-reverse
-          editDist(x.reverse, y.reverse)
-        ).min
-        //return normalized edit distance
-        (edit_distance / min_size)
-      }
-    }
-
-    /**
-      * Create a map of all pairwise distances (upper-diagonal only)
-      */
-    val dist_map = {
-      val all_pairwise = computeAllPairwise(architectures.keys.toList, List())
-      println(timeStamp + "Computing " + all_pairwise.size + " pairwise path-distances")
-      all_pairwise.map { case (subj, target) => {
-        progress(100000)
-        ((subj, target), computeNormEditDist(subj, target))
-      }}.toMap
-    }
-    //set output file
-    val pw2 = new PrintWriter(config.outputDir + "/" + config.prefix + ".distances.matrix")
-    pw2.println("$" + "\t" + rows.mkString("\t"))
-    //create distance matrix
-    rows.foreach(row => {
-      //output row name
-      pw2.print(row)
-      rows.foreach(column => {
-        if(row == column) pw2.print("\t" + 0.0)
-        else pw2.print("\t" + dist_map.getOrElse((row, column), dist_map((column, row))))
-      })
-      pw2.println
-    })
-    pw2.close
     println(timeStamp + "Successfully completed!")
   }
 
@@ -232,4 +180,66 @@ object ArchitectureMetrics extends GeneGraphReader {
       }
     }.last
   }
+
+  /**
+  /**
+    * Function to compute the normalized edit distance of two given architecture IDs. This is defined as:
+    * dist = min{ editDist(x,y), editDist(x, y.reverse), editDist(x.reverse, y), editDist(x.reverse, y.reverse }
+    * size = min{ x.size, y.size }
+    * 1 - ( dist / size)
+    *
+    * @return Double
+    */
+    def computeNormEditDist: (Int, Int) => Double = (_x, _y) => {
+      //get architectures
+      val (x, y) = (architectures(_x)._1.map(_.id), architectures(_y)._1.map(_.id))
+      //get min size
+      val min_size = min(x.size, y.size).toDouble
+      //no overlap, return max normalized distance
+      if (x.toSet.intersect(y.toSet).size == 0) 1.0
+      //compute distance for all possible forms
+      else {
+        //compute edit distance as:
+        val edit_distance = List(
+          //normal orientations
+          editDist(x, y),
+          //y-reverse
+          editDist(x, y.reverse),
+          //x-reverse
+          editDist(x.reverse, y),
+          //both-reverse
+          editDist(x.reverse, y.reverse)
+        ).min
+        //return normalized edit distance
+        (edit_distance / min_size)
+      }
+    }
+
+    /**
+    * Create a map of all pairwise distances (upper-diagonal only)
+    */
+    val dist_map = {
+      val all_pairwise = computeAllPairwise(architectures.keys.toList, List())
+      println(timeStamp + "Computing " + all_pairwise.size + " pairwise path-distances")
+      all_pairwise.map { case (subj, target) => {
+        progress(100000)
+        ((subj, target), computeNormEditDist(subj, target))
+      }
+      }.toMap
+    }
+    //set output file
+    val pw2 = new PrintWriter(config.outputDir + "/" + config.prefix + ".distances.matrix")
+    pw2.println("$" + "\t" + rows.mkString("\t"))
+    //create distance matrix
+    rows.foreach(row => {
+      //output row name
+      pw2.print(row)
+      rows.foreach(column => {
+        if (row == column) pw2.print("\t" + 0.0)
+        else pw2.print("\t" + dist_map.getOrElse((row, column), dist_map((column, row))))
+      })
+      pw2.println
+    })
+    pw2.close
+    */
 }

@@ -2,7 +2,7 @@ package utilities
 
 import java.io.File
 
-import utilities.FileHandling.openFileWithIterator
+import utilities.FileHandling.{openFileWithIterator, timeStamp}
 import utilities.PAFutils.{PAFentry, toPAFentry}
 import utilities.BlastUtils.{BLASTentry, toBlast}
 
@@ -16,7 +16,7 @@ import utilities.BlastUtils.{BLASTentry, toBlast}
 object MetaDataUtils {
 
   case class Description(id: Int, ref: String, start: Int, end: Int, ori: Char, description: String, geneID: String) {
-    override def toString(): String = List(id, ref, start, end, ori, description, geneID).mkString("\t")
+    override def toString(): String = List(id, ref, start + 1, end, ori, description, geneID).mkString("\t")
   }
 
   /**
@@ -54,9 +54,11 @@ object MetaDataUtils {
   }
 
   def loadAlignmentAsOrientations(file: File, isBlast: Boolean): Map[(String, String), Char] = {
-    openFileWithIterator(file).toList.foldLeft(Map[(String, String), Char]())((map, line) => {
+    openFileWithIterator(file).toList.foldLeft(Map[(String, String), (Char, Int)]())((map, line) => {
       //parse alignment as either PAF or BLAST line
       val alignment: Either[PAFentry, BLASTentry] = if (isBlast) Right(toBlast(line)) else Left(toPAFentry(line))
+      //get current alignment length
+      val alignment_length = if(alignment.isLeft) alignment.left.get.align_length else alignment.right.get.alength
       //set alignment tuple of (query, subj)
       val atuple = {
         if (alignment.isLeft) (alignment.left.get.qname, alignment.left.get.rname)
@@ -67,13 +69,22 @@ object MetaDataUtils {
       else {
         //set alignment orientation
         val ori = if (alignment.isLeft) alignment.left.get.ori else alignment.right.get.ori
-        //TODO: account for multi-mapping lines
-        //assert(!(map.contains(atuple) || map.contains(atuple)), "The two sequences are already in the map: " + atuple)
-        //update map
-        map + (atuple -> ori)
+          //assert(!(map.contains(atuple) || map.contains(atuple)), "The two sequences are already in the map: " +
+            //atuple + ". Based on alignment: " + line)
+        //add to map
+        if(!map.contains(atuple)) map + (atuple -> (ori, alignment_length))
+        //existing multiple alignments to same gene
+        else {
+          //get new ori and legnth
+          val (new_ori, new_length) = map(atuple)
+          if(new_ori != ori) println(timeStamp + "WARNING: dual alignments with different orientations: " + line)
+          //move on
+          if(alignment_length >= new_length) map
+          //update with updated orientation
+          else map + (atuple -> (new_ori, new_length))
+        }
       }
-      )
-    }
+    }).mapValues(_._1)
   }
 
   def loadGeneFamilies: File => Map[Int, List[Int]] = file => {

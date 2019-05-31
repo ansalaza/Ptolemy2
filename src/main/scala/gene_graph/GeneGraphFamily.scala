@@ -101,7 +101,7 @@ object GeneGraphFamily extends GeneGraphWriter {
         if (config.splitOri) assert(config.dnaAlignments != null, "Using " +
           "protein-based alignments with '--split-ori' parameter turned on. Requires '--dna-alignments'.")
       }
-      if(config.dnaAlignments != null) verifyFile(config.dnaAlignments)
+      if (config.dnaAlignments != null) verifyFile(config.dnaAlignments)
       geneGraphFamily(config)
     }
   }
@@ -111,14 +111,20 @@ object GeneGraphFamily extends GeneGraphWriter {
     val descriptions = loadDescriptions(config.descriptionsFile).map(x => x.id -> x).toMap
     //set local ID -> ptolemy id, if specified
     val l2p = if (!config.localID) Map[String, Int]() else descriptions.map(x => (x._2.geneID, x._1))
-    //set orientations mapping, if provided
+    //set orientations mapping, if provided; stores id (ptolemy or local) as a string
     val orientations = {
       if (!(config.splitOri && config.isProtein)) Map[(String, String), Char]()
       else {
         val tmp = loadAlignmentAsOrientations(config.dnaAlignments, config.dnaIsBlast)
-        if(!config.dnaIsLocal) tmp else tmp.map(x => (l2p(x._1._1).toString, l2p(x._1._2).toString) -> x._2)
+        if (!config.dnaIsLocal) tmp else tmp.map(x => (l2p(x._1._1).toString, l2p(x._1._2).toString) -> x._2)
       }
-    }.filter(x => (descriptions(x._1.toString).ref == descriptions(x._2.toString).ref))
+      //remove any self-mappings
+    }.filter(x => {
+      //using ptolemy IDs
+      if (!config.dnaIsLocal) (descriptions(x._1._1.toInt).ref == descriptions(x._1._2.toInt).ref)
+      //using local IDs
+      else (descriptions(l2p(x._1._1)).ref == descriptions(l2p(x._1._2)).ref)
+    })
 
     /**
       * Function to parse an alignment line (either PAF or BLAST-tabular)
@@ -149,6 +155,7 @@ object GeneGraphFamily extends GeneGraphWriter {
 
       /**
         * Load either a PAFentry or BLASTentry as an option 3-tuple: (query name, ref name, orientation)
+        * Assumes alignment is a valid alignment already.
         *
         * @return Option[(String,String,Char)]
         */
@@ -157,18 +164,30 @@ object GeneGraphFamily extends GeneGraphWriter {
         else {
           //set alignment orientation for current alignment
           val true_orientation = {
-            //DNA-based alignment or protein-based alignment but no split ori
+            //DNA-based alignment or a protein-based alignment with no split ori parameter
             if (!config.isProtein || !config.splitOri) either.right.get.ori
-            //protein-based alignmetn with split ori
+            //protein-based alignment with split ori
             else {
               //set alignment tuple
               val tuple = {
                 val ids = (either.right.get.qname, either.right.get.rname)
-                println(ids)
-                if(!config.localID) ids else (l2p(ids._1).toString, l2p(ids._2).toString)
+                if (!config.localID) ids else (l2p(ids._1).toString, l2p(ids._2).toString)
               }
-              //get alignment orientation
-              orientations.getOrElse(tuple, orientations(tuple.swap))
+              println(tuple)
+              //attempt to get orientations; note that the dna-based alignment may not exist for a protein alignment
+              val ori = {
+                if (orientations.contains(tuple)) orientations.get(tuple)
+                else if (orientations.contains(tuple.swap)) orientations.get(tuple.swap)
+                else None
+              }
+              //found orientation
+              if (ori.nonEmpty) ori.get
+              //could not find orientation
+              else {
+                println(timeStamp + "Found a protein alignment but no DNA alignment for " + tuple)
+                //assume positive for now
+                '+'
+              }
             }
           }
           //return option 3-tuple
@@ -184,14 +203,15 @@ object GeneGraphFamily extends GeneGraphWriter {
       def isValid: Either[PAFentry, BLASTentry] => Boolean = either => {
         //compute coverage
         val cov = computeCov(either)
-        //PAF or BLAST of DNA-based alignment
-        if (either.isLeft || !config.isProtein) cov > config.minCov
+        //PAF or BLAST of DNA-based alignment; check self-alignment and heuristics
+        if (either.isLeft || !config.isProtein) either.left.get.rname != either.left.get.qname && cov > config.minCov
         //protein based alignment
         else {
           //load as right
           val right = either.right.get
-          //check heuristics
-          (right.eval < config.minEval && right.bitscore > config.minBitscore && cov > config.minCov)
+          //check self-alignment and heuristics
+          (right.rname != right.qname) && (right.eval < config.minEval) && (right.bitscore > config.minBitscore) &&
+            (cov > config.minCov)
         }
       }
 
@@ -214,6 +234,7 @@ object GeneGraphFamily extends GeneGraphWriter {
     /**
       * Function to determine whether a two given genes are in the same orientation based on their
       * DNA-based alignment orientation
+      *
       * @return Boolean
       */
     def isSameOri: (Gene, Gene, Char) => Boolean = (g1, g2, alignment_ori) => {
@@ -234,11 +255,11 @@ object GeneGraphFamily extends GeneGraphWriter {
         //genes can't be from the same sequence
         if (descriptions(g1.id).ref == descriptions(g2.id).ref) sa
         //split ori is not turned on, add to SA
-        else if(!config.splitOri) (g1,g2) :: sa
+        else if (!config.splitOri) (g1, g2) :: sa
         //split ori is turned on, determine orientation compatability
         else {
           //only add if genes are on the same orientation
-          if(!isSameOri(g1, g2, align.get._3)) sa else (g1,g2) :: sa
+          if (!isSameOri(g1, g2, align.get._3)) sa else (g1, g2) :: sa
         }
       }
     })

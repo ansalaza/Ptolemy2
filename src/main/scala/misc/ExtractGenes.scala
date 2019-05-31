@@ -4,6 +4,7 @@ import java.io.{File, PrintWriter}
 
 import utilities.FileHandling.{openFileWithIterator, timeStamp, verifyDirectory, verifyFile}
 import utilities.GFFutils.parseMultiGFF2FingerTree
+import utilities.SequenceUtils.{dna2Protein, reverseComplement}
 
 import scala.annotation.tailrec
 
@@ -74,12 +75,13 @@ object ExtractGenes {
     //parse GFF3 files
     val (seq2Coords, id2Desc) = {
       val tmp = parseMultiGFF2FingerTree(Set(config.featureType), config.nameTag, config.idTag)(annotations, false)
-      (tmp._1.mapValues(_.toList.map(x => (x._1, x._2.id)).sortBy(_._1)), tmp._2)
+      (tmp._1.mapValues(_.toList.map(x => (x._2.id, x._1, x._2.ori)).sortBy(_._1)), tmp._2)
     }
     assert(seq2Coords.values.foldLeft(0)((acc,l) => acc + l.size) == id2Desc.size)
     println(timeStamp + "--Found " + id2Desc.size + " annotations")
     //create seq output file
-    val pw_seqs = new PrintWriter(config.outputDir + "/" + config.prefix + ".fa")
+    val pw_seqs = new PrintWriter(config.outputDir + "/" + config.prefix + ".fna")
+    val pw_proteins = new PrintWriter(config.outputDir + "/" + config.prefix + ".faa")
     println(timeStamp + "Extracting sequences")
     //iterate through genomes and output extracted genes
     genomes.foreach(genome => {
@@ -97,8 +99,16 @@ object ExtractGenes {
         //seq size
         val seq_size = seq.size
         if (coords.nonEmpty) {
-          coords.get.foreach { case ((start, end), id) => {
-            if(end <= seq_size) pw_seqs.println(">" + id + "\n" + seq.substring(start, end))
+          coords.get.foreach { case (id, (start, end), ori) => {
+            //only continue if coordinates are met
+            if(end <= seq_size) {
+              //set gene dna sequence
+              val geneseq = seq.substring(start, end).toUpperCase
+              //set protein seq
+              val proteinseq = dna2Protein(if(ori == '+') geneseq else reverseComplement(geneseq))
+              pw_proteins.println(">" + id + "\n" + proteinseq)
+              pw_seqs.println(">" + id + "\n" + geneseq)
+            }
           } }
         }
       }
@@ -137,6 +147,7 @@ object ExtractGenes {
       .foreach(x => pw_desc.println(x._2.toString()))
     pw_desc.close()
     pw_seqs.close()
+    pw_proteins.close()
     println(timeStamp + "Successfully completed!")
   }
 

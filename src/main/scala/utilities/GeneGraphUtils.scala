@@ -132,7 +132,8 @@ object GeneGraphUtils extends GeneGraphReader with GeneGraphWriter {
         //get nodes and edge
         val (node1,node2,edge) = extractNodeEdges(_edge)
         //update graph
-        val updated = acc + (node1 -> (node2 :: acc.getOrElse(node1, List[Int]())))
+        val updated = acc + (node1 -> (node2 :: acc.getOrElse(node1, List[Int]()))) +
+          (node2 -> acc.getOrElse(node2, List[Int]()))
         //update accordingly
         if(directed) updated else updated + (node2 -> (node1 :: acc.getOrElse(node2, List[Int]())))
       })

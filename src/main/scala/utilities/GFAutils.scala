@@ -170,9 +170,9 @@ object GFAutils {
       *
       * @return 2-tuple (GeneGraph and List of paths)
       */
-    def loadGFA: File => (GeneGraph, GenePaths) = file => {
+    def loadGFA(gfa: File, dir: Boolean): (GeneGraph, GenePaths) = {
       val (all_nodes, all_edges, all_paths) = {
-        openFileWithIterator(file).foldLeft((List[Int](), List[(Int, Int)](), List[(String, (List[Gene], Int))]())) {
+        openFileWithIterator(gfa).foldLeft((List[Int](), List[(Int, Int)](), List[(String, (List[Gene], Int))]())) {
           case ((nodes, edges, paths), line) => {
             val columns = line.split("\t")
             columns.head match {
@@ -183,9 +183,12 @@ object GFAutils {
               }
               case "P" => {
                 assert(columns.size == 4, "Unexpected number of columns in line: " + line)
-                val (id, size) = (columns(1), columns.last.toInt)
-                val path = parsePath(columns(2))
-                (nodes, edges, (id, (path, size)) :: paths)
+                if(columns(2).isEmpty) (nodes, edges, paths)
+                else {
+                  val (id, size) = (columns(1), columns.last.toInt)
+                  val path = parsePath(columns(2))
+                  (nodes, edges, (id, (path, size)) :: paths)
+                }
               }
               case _ => (nodes, edges, paths)
             }
@@ -201,12 +204,13 @@ object GFAutils {
       })
       //sanity check that all nodes are accounted for
       all_nodes.foreach(node => assert(graph.contains(node), "Expected node " + node + " in graph"))
-      //sanity check that there are bi-direction edges
-      graph.toList.foreach { case (node, edges) => {
-        edges.foreach(edge => {
-          assert(graph(edge).toSet.contains(node), "Expected bi-directional edge for " + (node, edge))
-        })
-      }
+      //sanity check when there are bi-direction edges
+      if(!dir){
+        graph.toList.foreach { case (node, edges) => {
+          edges.foreach(edge => {
+            assert(graph(edge).toSet.contains(node), "Expected bi-directional edge for " + (node, edge))
+          })
+        }}
       }
       (graph, all_paths.toMap)
     }

@@ -27,9 +27,9 @@ object GeneGraphAlignment extends GeneGraphWriter {
                      minMultiMap: Int = 100,
                      minDist: Int = 100,
                      minAlignmentCov: Double = 0.5,
-                     featureType: String = null,
+                     featureType: String = "CDS",
                      prefix: String = null,
-                     nameTag: String = null,
+                     nameTag: String = "product=",
                      idTag: String = "protein_id=",
                      excludeSeqFile: File = null,
                      excludeRegionFile: File = null,
@@ -145,9 +145,10 @@ object GeneGraphAlignment extends GeneGraphWriter {
     geneGraph2GFA(pw, gene_graph, None, alignment_node_coverage, alignment_edge_coverage, tmp_projection)
     pw.close()
     //create id file
-    val pw2 = new PrintWriter(config.outputDir + "/" + config.prefix + ".node_ids.txt")
+    val pw2 = new PrintWriter(config.outputDir + "/" + config.prefix + ".gene_description.txt")
     global_description.toList.sortBy(_._1).foreach(x => pw2.println(x._2.toString()))
     pw2.close
+    tmp_projection.delete()
     println(timeStamp + "Successfully completed!")
 
   }

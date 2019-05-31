@@ -96,7 +96,7 @@ object AlignmentGeneGraph {
     //iterate through each path and update gene graph as well as calculate node and edge coverage
     val (g, n, e) = {
       //load as gfa, but retain only paths
-      loadGFA(tmp_file)._2.foldLeft((empty_gene_graph, empty_node_coverage, empty_edge_coverage)) {
+      loadGFA(tmp_file, true)._2.foldLeft((empty_gene_graph, empty_node_coverage, empty_edge_coverage)) {
         case ((gene_graph, node_coverage, edge_coverage), (name, (path,size))) => {
           //update with current path
           updateGeneGraph(path, true, gene_graph, node_coverage, edge_coverage)

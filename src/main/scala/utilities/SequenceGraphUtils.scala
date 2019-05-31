@@ -16,7 +16,7 @@ import scala.annotation.tailrec
 object SequenceGraphUtils {
 
   case class AminoAcid(seq_id: Int, gene_id: Int, aa: Char) {
-    def gfaID(): String = gene_id + "_" + seq_id
+    def gfaID(): String = gene_id + "_" + seq_id + "_" + aa
   }
 
   type SequenceGraph = Map[AminoAcid, List[AminoAcid]]
